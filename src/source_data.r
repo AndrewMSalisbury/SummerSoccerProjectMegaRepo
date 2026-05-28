@@ -97,7 +97,7 @@ xx_init_data_cache <- function() {
                          data.frame(
                            team_season_id = character()
                          )),
-    'matches' = 
+    'matches' =
       # league_season_id
       # match_id
       # home_team_id
@@ -112,6 +112,16 @@ xx_init_data_cache <- function() {
                            away_team_id = character(),
                            home_team_goals = integer(),
                            away_team_goals = integer()
+                         )),
+    'coaches' =
+      # team_season_id
+      # coach_id
+      # coach_name
+      xx_data_read_cache('data/cache/coaches.rds',
+                         data.frame(
+                           team_season_id = character(),
+                           coach_id = character(),
+                           coach_name = character()
                          ))
   )
 }
@@ -127,8 +137,9 @@ xx_data_populate_league_seasons <- function(seasons) {
       team_season_ids <- xx_data_team_seasons(league_season_id) |> 
         dplyr::pull(team_season_id)
       for (team_season_id in team_season_ids) {
-        # populate players for team
+        # populate players and coach for team
         xx_data_player_info(team_season_id)
+        xx_data_coach(team_season_id)
       }
       
       # populate matches
@@ -242,6 +253,19 @@ xx_matches_for_team_season <- function(team_season_id, force_recrawl = FALSE) {
     dplyr::select(-league_season_id)
 }
 
+xx_data_coach <- function(team_season_id, force_recrawl = FALSE) {
+  filter_by_team <- function(df) {
+    df |> dplyr::filter(.data$team_season_id == .env$team_season_id)
+  }
+  if (force_recrawl | nrow(xx_data_cache$coaches |> filter_by_team()) == 0) {
+    coach <- xx_raw_team_season_coach(team_season_id)
+    cache <- rbind(xx_data_cache$coaches, coach)
+    xx_data_write_cache(cache, 'data/cache/coaches.rds')
+    xx_data_cache$coaches <<- cache
+  }
+  xx_data_cache$coaches |> filter_by_team()
+}
+
 # Compute team points given a set of matches.
 xx_team_points <- function(matches) {
   points_from_goal_diff <- function(diff) {
@@ -348,6 +372,23 @@ xx_raw_team_player_info <- function(team_season_id) {
   total_minutes_played = sum(merged$minutes_played)
   merged$percent_minutes_played = merged$minutes_played / total_minutes_played
   merged
+}
+
+xx_raw_team_season_coach <- function(team_season_id) {
+  cat('## crawling team_season_coach for', team_season_id, '\n')
+  Sys.sleep(10)
+  host_url <- "https://www.transfermarkt.com"
+  page <- xml2::read_html(team_season_id)
+
+  coach_link <- page |>
+    rvest::html_elements("a[href*='/profil/trainer/']") |>
+    head(1)
+
+  data.frame(
+    team_season_id = team_season_id,
+    coach_id = paste0(host_url, rvest::html_attr(coach_link, "href")),
+    coach_name = rvest::html_text(coach_link, trim = TRUE)
+  )
 }
 
 xx_raw_squad_stats <- function(team_season_id) {
