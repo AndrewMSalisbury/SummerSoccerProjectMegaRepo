@@ -224,9 +224,9 @@ xx_matches_for_league_season <- function(league_season_id, force_recrawl = FALSE
     df |> dplyr::filter(.data$league_season_id == .env$league_season_id)
   }
   if (force_recrawl | nrow(xx_data_cache$matches |> filter_by_league()) == 0) {
-    cache <- xx_data_cache$matches
+    cache <- xx_data_cache$matches |> dplyr::filter(.data$league_season_id != .env$league_season_id)
     matches <- xx_raw_league_season_matches(league_season_id)
-    cache <- rbind(cache, matches)
+    cache <- dplyr::bind_rows(cache, matches)
     xx_data_write_cache(cache, 'data/cache/matches.rds')
     xx_data_cache$matches <<- cache
   }
