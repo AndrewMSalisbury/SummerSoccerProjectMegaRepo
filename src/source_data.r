@@ -61,6 +61,7 @@ xx_data_write_cache <- function(db, filename) {
 }
 
 xx_init_data_cache <- function() {
+  dir.create("data/cache", recursive = TRUE, showWarnings = FALSE)
   xx_data_cache <<- list(
     'leagues' = 
       # league_id
