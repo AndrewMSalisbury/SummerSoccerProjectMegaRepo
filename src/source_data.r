@@ -9,6 +9,7 @@ library(dplyr)
 library(purrr)
 library(rvest)
 library(stringr)
+library(tidyr)
 library(xml2)
 
 # Individual leagues
@@ -335,10 +336,10 @@ xx_raw_league_season_matches <- function(league_season_id) {
   link_to_team_id <- function(link) {
     paste0(host_url, sub('/spielplan/', '/startseite/', link))
   }
-  xml2::read_html(league_season_results_url) |> 
+  xml2::read_html(league_season_results_url) |>
     rvest::html_elements('div.large-6 table') |> # one table per season-week
     purrr::map_df(function(week_table) {
-      week_table |> 
+      week_table |>
         rvest::html_elements('tr:not(.bg_blau_20):not(:first-child)') |> # one tr per match
         purrr::map_df(function(match_tr) {
           field_tds <- match_tr |> rvest::html_elements('td')
@@ -368,7 +369,8 @@ xx_raw_league_season_matches <- function(league_season_id) {
             home_team_goals = as.integer(score_parts[1]),
             away_team_goals = as.integer(score_parts[2])
           )
-        })
+        }) |>
+        tidyr::fill(match_date)  # forward-fill date within each week-table
     })
 }
 
