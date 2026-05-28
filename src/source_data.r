@@ -100,6 +100,7 @@ xx_init_data_cache <- function() {
     'matches' =
       # league_season_id
       # match_id
+      # match_date
       # home_team_id
       # away_team_id
       # home_team_goals
@@ -107,11 +108,12 @@ xx_init_data_cache <- function() {
       xx_data_read_cache('data/cache/matches.rds',
                          data.frame(
                            league_season_id = character(),
-                           match_id = character(),
-                           home_team_id = character(),
-                           away_team_id = character(),
-                           home_team_goals = integer(),
-                           away_team_goals = integer()
+                           match_id         = character(),
+                           match_date       = as.Date(character()),
+                           home_team_id     = character(),
+                           away_team_id     = character(),
+                           home_team_goals  = integer(),
+                           away_team_goals  = integer()
                          )),
     'coaches' =
       # team_season_id
@@ -342,20 +344,25 @@ xx_raw_league_season_matches <- function(league_season_id) {
           score_link <- field_tds[5] |> rvest::html_elements('a')
           score_parts <- strsplit(score_link |> rvest::html_text(), ':')[[1]]
           data.frame(
-            match_id = 
-              score_link |> 
-              rvest::html_attr('href') %>% 
+            match_id =
+              score_link |>
+              rvest::html_attr('href') %>%
               paste0(host_url, .),
             league_season_id = league_season_id,
-            home_team_id = 
-              field_tds[4] |> 
-              rvest::html_elements('a') |> 
-              rvest::html_attr('href') |> 
+            match_date =
+              field_tds[1] |>
+              rvest::html_text(trim = TRUE) |>
+              stringr::str_extract("\\d{2}/\\d{2}/\\d{2}") |>
+              as.Date(format = "%d/%m/%y"),
+            home_team_id =
+              field_tds[4] |>
+              rvest::html_elements('a') |>
+              rvest::html_attr('href') |>
               link_to_team_id(),
-            away_team_id = 
-              field_tds[6] |> 
-              rvest::html_elements('a') |> 
-              rvest::html_attr('href') |> 
+            away_team_id =
+              field_tds[6] |>
+              rvest::html_elements('a') |>
+              rvest::html_attr('href') |>
               link_to_team_id(),
             home_team_goals = as.integer(score_parts[1]),
             away_team_goals = as.integer(score_parts[2])
