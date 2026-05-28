@@ -117,11 +117,15 @@ xx_init_data_cache <- function() {
       # team_season_id
       # coach_id
       # coach_name
+      # date_from
+      # date_to
       xx_data_read_cache('data/cache/coaches.rds',
                          data.frame(
                            team_season_id = character(),
-                           coach_id = character(),
-                           coach_name = character()
+                           coach_id       = character(),
+                           coach_name     = character(),
+                           date_from      = as.Date(character()),
+                           date_to        = as.Date(character())
                          ))
   )
 }
@@ -380,15 +384,24 @@ xx_raw_team_season_coach <- function(team_season_id) {
   host_url <- "https://www.transfermarkt.com"
   page <- xml2::read_html(team_season_id)
 
-  coach_link <- page |>
+  page |>
     rvest::html_elements("a[href*='/profil/trainer/']") |>
-    head(1)
-
-  data.frame(
-    team_season_id = team_season_id,
-    coach_id = paste0(host_url, rvest::html_attr(coach_link, "href")),
-    coach_name = rvest::html_text(coach_link, trim = TRUE)
-  )
+    purrr::map_df(function(coach_link) {
+      container <- coach_link |>
+        rvest::html_element(xpath = "ancestor::div[@class='container-content']")
+      tenure_parts <- container |>
+        rvest::html_element(".container-tenure") |>
+        rvest::html_text(trim = TRUE) |>
+        stringr::str_split("–") |>
+        (\(x) stringr::str_trim(x[[1]]))()
+      data.frame(
+        team_season_id = team_season_id,
+        coach_id       = paste0(host_url, rvest::html_attr(coach_link, "href")),
+        coach_name     = rvest::html_text(coach_link, trim = TRUE),
+        date_from      = as.Date(tenure_parts[1], format = "%d/%m/%Y"),
+        date_to        = suppressWarnings(as.Date(tenure_parts[2], format = "%d/%m/%Y"))
+      )
+    })
 }
 
 xx_raw_squad_stats <- function(team_season_id) {
