@@ -136,24 +136,47 @@ xx_init_data_cache <- function() {
 # Init cache when sourcing this file.
 xx_init_data_cache()
 
-xx_data_populate_league_seasons <- function(seasons) { 
-  for (league_id in xx_all_leagues()) {
+xx_data_populate_league_seasons <- function(seasons) {
+  leagues <- xx_all_leagues()
+  n_leagues <- length(leagues)
+  n_seasons <- length(seasons)
+  league_num <- 0
+  for (league_id in leagues) {
+    league_num <- league_num + 1
+    season_num <- 0
     for (season_year in seasons) {
+      season_num <- season_num + 1
       league_season_id <- xx_league_season_id(league_id, season_year)
-      cat('populating league', league_season_id, '\n')
-      # populate teams
-      team_season_ids <- xx_data_team_seasons(league_season_id) |> 
+      cat(sprintf('[%d/%d leagues | %d/%d seasons] %s\n',
+                  league_num, n_leagues, season_num, n_seasons, league_season_id))
+      team_season_ids <- xx_data_team_seasons(league_season_id) |>
         dplyr::pull(team_season_id)
+      n_teams <- length(team_season_ids)
+      team_num <- 0
       for (team_season_id in team_season_ids) {
-        # populate players and coach for team
+        team_num <- team_num + 1
+        cat(sprintf('  [%d/%d] %s\n', team_num, n_teams, team_season_id))
         xx_data_player_info(team_season_id)
         xx_data_coach(team_season_id)
       }
-      
-      # populate matches
       xx_matches_for_league_season(league_season_id)
     }
   }
+}
+
+xx_refresh_match_dates <- function(seasons = 2015:2024) {
+  leagues <- xx_all_leagues()
+  n_total <- length(leagues) * length(seasons)
+  n <- 0
+  for (league_id in leagues) {
+    for (season_year in seasons) {
+      n <- n + 1
+      league_season_id <- xx_league_season_id(league_id, season_year)
+      cat(sprintf('[%d/%d] re-scraping match dates for %s\n', n, n_total, league_season_id))
+      xx_matches_for_league_season(league_season_id, force_recrawl = TRUE)
+    }
+  }
+  cat('Done. All match dates refreshed.\n')
 }
 
 xx_data_populate_team_seasons <- function(league_season_ids) { 
@@ -329,6 +352,7 @@ xx_raw_team_seasons <- function(league_season_id) {
 
 xx_raw_league_season_matches <- function(league_season_id) {
   cat('## crawling raw_league_season_matches for', league_season_id, '\n')
+  Sys.sleep(5)
   # Change url of form: https://www.transfermarkt.com/premier-league/startseite/wettbewerb/GB1/plus/?saison_id=2024
   #     to url of form: https://www.transfermarkt.com/premier-league/gesamtspielplan/wettbewerb/GB1/?saison_id=2024
   league_season_results_url <- sub("startseite", "gesamtspielplan", sub("/plus/","/", league_season_id))
