@@ -13,45 +13,9 @@ library(stringr)
 library(tidyr)
 library(xml2)
 
-.TM_USER_AGENT <- "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-
-# Fetch a Transfermarkt page with browser headers and simple retry on failure.
-# Returns a parsed xml_document, or NULL if all attempts fail.
-xx_fetch_page <- function(url, retries = 2, retry_sleep = 60) {
-  for (attempt in seq_len(retries + 1)) {
-    response <- tryCatch(
-      httr::GET(
-        url,
-        httr::user_agent(.TM_USER_AGENT),
-        httr::add_headers(
-          Accept = "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-          `Accept-Language` = "en-US,en;q=0.5",
-          `Accept-Encoding` = "gzip, deflate",
-          `Connection` = "keep-alive",
-          `Upgrade-Insecure-Requests` = "1"
-        )
-      ),
-      error = function(e) {
-        cat('  connection error (attempt', attempt, '):', conditionMessage(e), '\n')
-        NULL
-      }
-    )
-    if (!is.null(response) && !httr::http_error(response)) {
-      return(xml2::read_html(httr::content(response, as = "text", encoding = "UTF-8")))
-    }
-    if (!is.null(response)) {
-      status <- httr::status_code(response)
-      cat('  HTTP', status, 'on attempt', attempt, '\n')
-      if (status == 405L) break  # Method Not Allowed won't change on retry
-    }
-    if (attempt <= retries) {
-      cat('  retrying in', retry_sleep, 's...\n')
-      Sys.sleep(retry_sleep)
-    }
-  }
-  cat('  all attempts failed for', url, '\n')
-  NULL
-}
+httr::set_config(httr::user_agent(
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+))
 
 # Individual leagues
 xx_league_id_PREMIER_LEAGUE <- "https://www.transfermarkt.com/premier-league/startseite/wettbewerb/GB1"
@@ -375,7 +339,9 @@ xx_raw_team_seasons <- function(league_season_id) {
   cat('## crawling raw_team_seasons for', league_season_id, '\n')
   Sys.sleep(10)
   host_url <- "https://www.transfermarkt.com"
-  season_page <- xx_fetch_page(league_season_id)
+  season_page <- tryCatch(xml2::read_html(league_season_id), error = function(e) {
+    cat('  ERROR loading page:', conditionMessage(e), '\n'); NULL
+  })
   if (is.null(season_page)) return(data.frame(team_season_id = character(), team_name = character()))
   
   season_page |>
@@ -404,7 +370,9 @@ xx_raw_league_season_matches <- function(league_season_id) {
   link_to_team_id <- function(link) {
     paste0(host_url, sub('/spielplan/', '/startseite/', link))
   }
-  page <- xx_fetch_page(league_season_results_url)
+  page <- tryCatch(xml2::read_html(league_season_results_url), error = function(e) {
+    cat('  ERROR loading page:', conditionMessage(e), '\n'); NULL
+  })
   if (is.null(page)) return(data.frame(
     match_id = character(), league_season_id = character(),
     match_date = as.Date(character()), home_team_id = character(),
@@ -476,7 +444,9 @@ xx_raw_team_season_coach <- function(team_season_id) {
     date_to        = as.Date(character())
   )
 
-  page <- xx_fetch_page(team_season_id)
+  page <- tryCatch(xml2::read_html(team_season_id), error = function(e) {
+    cat('  ERROR loading page:', conditionMessage(e), '\n'); NULL
+  })
   if (is.null(page)) return(empty_result)
 
   coach_links <- rvest::html_elements(page, "a[href*='/profil/trainer/']")
@@ -511,7 +481,9 @@ xx_raw_squad_stats <- function(team_season_id) {
   # copied from worldfootballR::tm_squad_stats
   host_url <- "https://www.transfermarkt.com"
   team_data_url <- gsub("startseite", "leistungsdaten", team_season_id)
-  team_data_page <- xx_fetch_page(team_data_url)
+  team_data_page <- tryCatch(xml2::read_html(team_data_url), error = function(e) {
+    cat('  ERROR loading squad stats page:', conditionMessage(e), '\n'); NULL
+  })
   if (is.null(team_data_page)) {
     return(data.frame(
       player_name     = character(),
@@ -576,7 +548,9 @@ xx_raw_player_market_value <- function(team_season_id) {
   team_players_url <- gsub("startseite", "kader", team_season_id) %>%
     paste0(., "/plus/1")
 
-  team_page <- xx_fetch_page(team_players_url)
+  team_page <- tryCatch(xml2::read_html(team_players_url), error = function(e) {
+    cat('  ERROR loading market value page:', conditionMessage(e), '\n'); NULL
+  })
   if (is.null(team_page)) {
     return(data.frame(player_url = character(), player_market_value_euro = numeric()))
   }
