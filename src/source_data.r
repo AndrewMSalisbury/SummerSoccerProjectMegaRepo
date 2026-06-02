@@ -416,26 +416,50 @@ xx_raw_team_season_coach <- function(team_season_id) {
   cat('## crawling team_season_coach for', team_season_id, '\n')
   Sys.sleep(10)
   host_url <- "https://www.transfermarkt.com"
-  page <- xml2::read_html(team_season_id)
 
-  page |>
-    rvest::html_elements("a[href*='/profil/trainer/']") |>
-    purrr::map_df(function(coach_link) {
-      container <- coach_link |>
-        rvest::html_element(xpath = "ancestor::div[@class='container-content']")
-      tenure_parts <- container |>
-        rvest::html_element(".container-tenure") |>
-        rvest::html_text(trim = TRUE) |>
-        stringr::str_split("–") |>
-        (\(x) stringr::str_trim(x[[1]]))()
-      data.frame(
-        team_season_id = team_season_id,
-        coach_id       = paste0(host_url, rvest::html_attr(coach_link, "href")),
-        coach_name     = rvest::html_text(coach_link, trim = TRUE),
-        date_from      = as.Date(tenure_parts[1], format = "%d/%m/%Y"),
-        date_to        = suppressWarnings(as.Date(tenure_parts[2], format = "%d/%m/%Y"))
-      )
-    })
+  empty_result <- data.frame(
+    team_season_id = character(),
+    coach_id       = character(),
+    coach_name     = character(),
+    date_from      = as.Date(character()),
+    date_to        = as.Date(character())
+  )
+
+  page <- tryCatch(
+    xml2::read_html(team_season_id),
+    error = function(e) {
+      cat('  ERROR loading page:', conditionMessage(e), '\n')
+      NULL
+    }
+  )
+  if (is.null(page)) return(empty_result)
+
+  coach_links <- rvest::html_elements(page, "a[href*='/profil/trainer/']")
+  if (length(coach_links) == 0) {
+    cat('  WARNING: no coach links found on page\n')
+    return(empty_result)
+  }
+
+  purrr::map_df(coach_links, function(coach_link) {
+    container <- tryCatch(
+      rvest::html_element(coach_link, xpath = "ancestor::div[@class='container-content']"),
+      error = function(e) NULL
+    )
+    if (is.null(container) || inherits(container, "xml_missing")) {
+      return(NULL)
+    }
+    tenure_text <- container |>
+      rvest::html_element(".container-tenure") |>
+      rvest::html_text(trim = TRUE)
+    tenure_parts <- stringr::str_split(tenure_text, "–")[[1]] |> stringr::str_trim()
+    data.frame(
+      team_season_id = team_season_id,
+      coach_id       = paste0(host_url, rvest::html_attr(coach_link, "href")),
+      coach_name     = rvest::html_text(coach_link, trim = TRUE),
+      date_from      = as.Date(tenure_parts[1], format = "%d/%m/%Y"),
+      date_to        = suppressWarnings(as.Date(tenure_parts[2], format = "%d/%m/%Y"))
+    )
+  })
 }
 
 xx_raw_squad_stats <- function(team_season_id) {
