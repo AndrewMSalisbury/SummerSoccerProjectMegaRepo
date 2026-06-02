@@ -20,7 +20,17 @@ library(xml2)
 xx_fetch_page <- function(url, retries = 2, retry_sleep = 60) {
   for (attempt in seq_len(retries + 1)) {
     response <- tryCatch(
-      httr::GET(url, httr::user_agent(.TM_USER_AGENT)),
+      httr::GET(
+        url,
+        httr::user_agent(.TM_USER_AGENT),
+        httr::add_headers(
+          Accept = "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+          `Accept-Language` = "en-US,en;q=0.5",
+          `Accept-Encoding` = "gzip, deflate",
+          `Connection` = "keep-alive",
+          `Upgrade-Insecure-Requests` = "1"
+        )
+      ),
       error = function(e) {
         cat('  connection error (attempt', attempt, '):', conditionMessage(e), '\n')
         NULL
@@ -30,7 +40,9 @@ xx_fetch_page <- function(url, retries = 2, retry_sleep = 60) {
       return(xml2::read_html(httr::content(response, as = "text", encoding = "UTF-8")))
     }
     if (!is.null(response)) {
-      cat('  HTTP', httr::status_code(response), 'on attempt', attempt, '\n')
+      status <- httr::status_code(response)
+      cat('  HTTP', status, 'on attempt', attempt, '\n')
+      if (status == 405L) break  # Method Not Allowed won't change on retry
     }
     if (attempt <= retries) {
       cat('  retrying in', retry_sleep, 's...\n')
