@@ -332,7 +332,14 @@ xx_raw_team_seasons <- function(league_season_id) {
   cat('## crawling raw_team_seasons for', league_season_id, '\n')
   Sys.sleep(10)
   host_url <- "https://www.transfermarkt.com"
-  season_page <- xml2::read_html(league_season_id)
+  season_page <- tryCatch(
+    xml2::read_html(league_season_id),
+    error = function(e) {
+      cat('  ERROR loading league season page:', conditionMessage(e), '\n')
+      NULL
+    }
+  )
+  if (is.null(season_page)) return(data.frame(team_season_id = character(), team_name = character()))
   
   season_page |>
     rvest::html_elements("#yw1 .hauptlink a") |> 
@@ -530,11 +537,20 @@ xx_raw_squad_stats <- function(team_season_id) {
 }
 
 xx_raw_player_market_value <- function(team_season_id) {
-  # Copied from worldfootballR::tm_each_team_player_market_val 
+  # Copied from worldfootballR::tm_each_team_player_market_val
   team_players_url <- gsub("startseite", "kader", team_season_id) %>%
     paste0(., "/plus/1")
-  
-  team_page <- xml2::read_html(team_players_url)
+
+  team_page <- tryCatch(
+    xml2::read_html(team_players_url),
+    error = function(e) {
+      cat('  ERROR loading market value page:', conditionMessage(e), '\n')
+      NULL
+    }
+  )
+  if (is.null(team_page)) {
+    return(data.frame(player_url = character(), player_market_value_euro = numeric()))
+  }
   
   team_data <- 
     team_page %>% 
