@@ -229,16 +229,18 @@ xx_data_player_info <- function(team_season_id, force_recrawl = FALSE) {
     df |> dplyr::filter(.data$team_season_id == .env$team_season_id)
   }
   if (force_recrawl | nrow(xx_data_cache$players |> filter_by_team()) == 0) {
-    cache <- xx_data_cache$players
     players <- xx_raw_team_player_info(team_season_id)
-    players$team_season_id <- team_season_id
-    cache <- rbind(cache, players)
-    xx_data_write_cache(cache, 'data/cache/players.rds')
-    xx_data_cache$players <<- cache
-  } 
-  xx_data_cache$players |> 
+    if (nrow(players) == 0) {
+      cat('  WARNING: no player data returned for', team_season_id, '-- will retry on next run\n')
+    } else {
+      players$team_season_id <- team_season_id
+      cache <- rbind(xx_data_cache$players, players)
+      xx_data_write_cache(cache, 'data/cache/players.rds')
+      xx_data_cache$players <<- cache
+    }
+  }
+  xx_data_cache$players |>
     filter_by_team()
-    # dplyr::mutate(team_name = strsplit(team_season_id, "/")[[1]][4]) # pull name from id
 }
 
 # returns all matches for given league_season_id
