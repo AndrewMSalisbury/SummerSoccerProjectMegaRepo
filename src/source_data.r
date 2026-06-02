@@ -6,11 +6,16 @@
 
 #library(worldfootballR)
 library(dplyr)
+library(httr)
 library(purrr)
 library(rvest)
 library(stringr)
 library(tidyr)
 library(xml2)
+
+httr::set_config(httr::user_agent(
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+))
 
 # Individual leagues
 xx_league_id_PREMIER_LEAGUE <- "https://www.transfermarkt.com/premier-league/startseite/wettbewerb/GB1"
@@ -411,6 +416,7 @@ xx_raw_team_player_info <- function(team_season_id) {
   cat('## crawling raw_team_player_info for', team_season_id, '\n')
   Sys.sleep(15)
   stats <- xx_raw_squad_stats(team_season_id)
+  Sys.sleep(10)
   values <- xx_raw_player_market_value(team_season_id)
   merged <- full_join(stats, values, by = "player_url") |> 
     dplyr::select(player_url, player_name, player_age, player_position, minutes_played, player_market_value_euro) |> 
