@@ -466,9 +466,22 @@ xx_raw_squad_stats <- function(team_season_id) {
   # copied from worldfootballR::tm_squad_stats
   host_url <- "https://www.transfermarkt.com"
   team_data_url <- gsub("startseite", "leistungsdaten", team_season_id)
-  team_data_page <- tryCatch(xml2::read_html(team_data_url), error = function(e) NA)
-  team_name <- 
-    team_data_page %>% 
+  team_data_page <- tryCatch(xml2::read_html(team_data_url), error = function(e) {
+    cat('  ERROR loading squad stats page:', conditionMessage(e), '\n')
+    NULL
+  })
+  if (is.null(team_data_page)) {
+    return(data.frame(
+      player_name     = character(),
+      player_url      = character(),
+      player_position = character(),
+      player_age      = numeric(),
+      minutes_played  = numeric(),
+      team_name       = character()
+    ))
+  }
+  team_name <-
+    team_data_page %>%
     rvest::html_nodes(".data-header__headline-wrapper--oswald") %>% 
     rvest::html_text() %>% 
     stringr::str_squish()
