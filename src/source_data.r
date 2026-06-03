@@ -13,9 +13,41 @@ library(stringr)
 library(tidyr)
 library(xml2)
 
-httr::set_config(httr::user_agent(
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-))
+# Browser session cookie for Transfermarkt. Expires after days/weeks.
+# To refresh: in Chrome DevTools Network tab, right-click any TM request
+# -> Copy -> Copy as cURL, then update the -b '...' value below.
+.TM_COOKIE <- "_sp_su=false; AMCV_B21B678254F601E20A4C98A5%40AdobeOrg=MCMID|88287303479104173192568162169096146625; _sp_v1_ss=1:H4sIAAAAAAAAAItWqo5RKimOUbLKK83J0YlRSkVil4AlqmtrlXQGVlk0MiMPxDCojcWlD6eEUiwAP1Mivu4AAAA%3D; _sp_v1_p=826; _sp_v1_data=1208957; euconsent-v2=CQk3ggAQk3ggAAGABCENCfFsAP_gAEPgACiQLdtR_C7dCCFAADZzaLsgeIQQ1lADJsABAAQAACAFAAIQgIwCkUEAFAAAgAAAERAAIgAAAAAAAAAAAAAAAIAEKACEAAAUwAAAIAAAABAAQAAAAAAAAAAAAAAAAgABAAAAgAAEAAIAQAAAAQACAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAkAAAAAAAABAIAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAQiAABAAAAACC3cAUBKwEKwI3gStAt2AWEgMgAVAAuABwADwAIIAZABoAEwAKoAbwA_ACEgEMARIAjgBNADAAHsAPuAjQCOAEiAPaAvMBkgELgK-AWFCAAwAHABFAIOOgOAALAAqABwAEEAMgA0ACYAFUALoAYgA3gB-gEMARIAjgBNACjAGAAPYAfYBFgCOAEiALEAXkA9oCZAF5gMkAt2OABwAOAA8AC8BBwEIIQCAAFgBVADEAG8APwAwACOAEiIAAgAHgFiJQDQAFgAcACYAFUAMUAhgCJAEcAKMAYABHAF5gMkAlaSABAAXAIOUgLgALAAqABwAEAANAAmABVADEAH6AQwBEgCOAFGAMAAfYBFgCOAEiALyAe0BeYDJAGygWFKABQALgAyAIOAWIA7ZaAIAMAAjgFhQLdgAA.ILdtR_C7dCCFAADZzaLsgeIQQ1lADJsABAAQAACAFAAIQgIwCkUEAFAAAgAAAERAAIgAAAAAAAAAAAAAAAIAEKACEAAAUwAAAIAAAABAAQAAAAAAAAAAAAAAAAgABAAAAgAAEAAIAQAAAAQACAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAkAAAAAAAABAIAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAQiAABAAAAAC.YAAAAAAAAAAA; cuukie=MFluWHIyU0hsWG04aUxsVll4WHJIRldJQzNPS0hIOG-tqaQIJuzyDKgBOoRZENc19OMhDfmoV7YSiu5DDFmG4w%3D%3D; consentUUID=cce63200-9a24-432c-8da5-5c675534ca9b_56; kndctr_B21B678254F601E20A4C98A5_AdobeOrg_identity=CiY4ODI4NzMwMzQ3OTEwNDE3MzE5MjU2ODE2MjE2OTA5NjE0NjYyNVISCNTX7dmIMxABGAEqA09SMjAA8AHlo5Hb6DM%3D; aws-waf-token=f3e3cd0f-b96e-492e-b923-7b296e4d3b02:EwoAvncokekNAAAA:rk+PdlDUXkiC7TCH3zPleMtEk5qVHC4FvccsIcJLmmvfvA4aX+lbN2H8l6IcyZoGR39cmzWNDReTtIgu0uikdDOAqBes9E5IQAYwMl1/q3F6UzXzlYvxzmPEZuWmXqPdnfPmUUg7K2DWXTwwiUTy5OBqspbovUnRdhQiJjuAUXvKUqWRmFWOhgaI3tbd4FZPMtK5Ac79ipchis4kHqDC6Sk=; kndctr_B21B678254F601E20A4C98A5_AdobeOrg_cluster=or2"
+
+xx_fetch_page <- function(url) {
+  tryCatch({
+    response <- httr::GET(
+      url,
+      httr::add_headers(
+        `accept`                    = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        `accept-language`           = "en-US,en;q=0.9",
+        `cache-control`             = "max-age=0",
+        `cookie`                    = .TM_COOKIE,
+        `sec-ch-ua`                 = '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
+        `sec-ch-ua-mobile`          = "?0",
+        `sec-ch-ua-platform`        = '"Windows"',
+        `sec-fetch-dest`            = "document",
+        `sec-fetch-mode`            = "navigate",
+        `sec-fetch-site`            = "none",
+        `sec-fetch-user`            = "?1",
+        `upgrade-insecure-requests` = "1",
+        `user-agent`                = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+      )
+    )
+    if (httr::http_error(response)) {
+      cat('  HTTP', httr::status_code(response), 'for', url, '\n')
+      return(NULL)
+    }
+    xml2::read_html(httr::content(response, as = "text", encoding = "UTF-8"))
+  }, error = function(e) {
+    cat('  ERROR loading page:', conditionMessage(e), '\n')
+    NULL
+  })
+}
 
 # Individual leagues
 xx_league_id_PREMIER_LEAGUE <- "https://www.transfermarkt.com/premier-league/startseite/wettbewerb/GB1"
@@ -339,9 +371,7 @@ xx_raw_team_seasons <- function(league_season_id) {
   cat('## crawling raw_team_seasons for', league_season_id, '\n')
   Sys.sleep(10)
   host_url <- "https://www.transfermarkt.com"
-  season_page <- tryCatch(xml2::read_html(league_season_id), error = function(e) {
-    cat('  ERROR loading page:', conditionMessage(e), '\n'); NULL
-  })
+  season_page <- xx_fetch_page(league_season_id)
   if (is.null(season_page)) return(data.frame(team_season_id = character(), team_name = character()))
   
   season_page |>
@@ -370,9 +400,7 @@ xx_raw_league_season_matches <- function(league_season_id) {
   link_to_team_id <- function(link) {
     paste0(host_url, sub('/spielplan/', '/startseite/', link))
   }
-  page <- tryCatch(xml2::read_html(league_season_results_url), error = function(e) {
-    cat('  ERROR loading page:', conditionMessage(e), '\n'); NULL
-  })
+  page <- xx_fetch_page(league_season_results_url)
   if (is.null(page)) return(data.frame(
     match_id = character(), league_season_id = character(),
     match_date = as.Date(character()), home_team_id = character(),
@@ -444,9 +472,7 @@ xx_raw_team_season_coach <- function(team_season_id) {
     date_to        = as.Date(character())
   )
 
-  page <- tryCatch(xml2::read_html(team_season_id), error = function(e) {
-    cat('  ERROR loading page:', conditionMessage(e), '\n'); NULL
-  })
+  page <- xx_fetch_page(team_season_id)
   if (is.null(page)) return(empty_result)
 
   coach_links <- rvest::html_elements(page, "a[href*='/profil/trainer/']")
@@ -481,9 +507,7 @@ xx_raw_squad_stats <- function(team_season_id) {
   # copied from worldfootballR::tm_squad_stats
   host_url <- "https://www.transfermarkt.com"
   team_data_url <- gsub("startseite", "leistungsdaten", team_season_id)
-  team_data_page <- tryCatch(xml2::read_html(team_data_url), error = function(e) {
-    cat('  ERROR loading squad stats page:', conditionMessage(e), '\n'); NULL
-  })
+  team_data_page <- xx_fetch_page(team_data_url)
   if (is.null(team_data_page)) {
     return(data.frame(
       player_name     = character(),
@@ -548,9 +572,7 @@ xx_raw_player_market_value <- function(team_season_id) {
   team_players_url <- gsub("startseite", "kader", team_season_id) %>%
     paste0(., "/plus/1")
 
-  team_page <- tryCatch(xml2::read_html(team_players_url), error = function(e) {
-    cat('  ERROR loading market value page:', conditionMessage(e), '\n'); NULL
-  })
+  team_page <- xx_fetch_page(team_players_url)
   if (is.null(team_page)) {
     return(data.frame(player_url = character(), player_market_value_euro = numeric()))
   }
