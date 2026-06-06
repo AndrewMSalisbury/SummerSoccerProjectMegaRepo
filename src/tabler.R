@@ -32,26 +32,43 @@ italy_2024_team_chart <- italy_2024_team_chart |>
   select(-predicted)
 
 
-league_season_team_chart <- function(league_season_id) {
+league_season_team_chart <- function(league_season_id, min_minutes_pct = 0) {
   players <- league_player_info(league_season_id)
   matches <- xx_matches_for_league_season(league_season_id)
   team_points <- xx_team_points(matches)
-  
+
+  games_played <- rbind(
+    matches |> select(team_season_id = home_team_id),
+    matches |> select(team_season_id = away_team_id)
+  ) |>
+    group_by(team_season_id) |>
+    summarize(games_played = n())
+
+  # min_minutes_pct filters to players who played >= that fraction of their
+  # team's available playing time (games_played * 90 minutes), not squad share.
+  if (min_minutes_pct > 0) {
+    players <- players |>
+      left_join(games_played, by = "team_season_id") |>
+      filter(minutes_played >= games_played * 90 * min_minutes_pct) |>
+      select(-games_played)
+  }
+
   team_chart <- players |>
     transform(minute_value = player_market_value_euro * percent_minutes_played) |>
     group_by(team_name) |>
-    summarize(total_team_value = sum(player_market_value_euro, na.rm = TRUE), 
+    summarize(total_team_value = sum(player_market_value_euro, na.rm = TRUE),
               weighted_team_value = sum(minute_value, na.rm = TRUE),
               team_season_id = first(team_season_id))
   model <- lm(weighted_team_value ~ total_team_value, team_chart)
   team_chart |>
     mutate(predicted = predict(model, newdata = select(team_chart, total_team_value)),
-           weighted_team_value = ifelse(weighted_team_value == 0, 
-                                        predicted, 
-                                        weighted_team_value))|>
+           weighted_team_value = ifelse(weighted_team_value == 0,
+                                        predicted,
+                                        weighted_team_value)) |>
     mutate(total_value_rank = rank(desc(total_team_value)),
-           weighted_value_rank = rank(desc(weighted_team_value))) |> 
-    full_join(team_points, by = "team_season_id") |> 
+           weighted_value_rank = rank(desc(weighted_team_value))) |>
+    full_join(team_points, by = "team_season_id") |>
+    full_join(games_played, by = "team_season_id") |>
     mutate(points_rank = rank(desc(total_points), ties.method = "min")) |>
     select(-predicted)
 }

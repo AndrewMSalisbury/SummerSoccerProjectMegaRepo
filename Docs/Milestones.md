@@ -18,15 +18,15 @@ Minutes-weighted squad value is calculated for every team-season in the dataset.
 
 ---
 
-## Milestone 3: Model Comparison
-**Target: ~June 6**
+## Milestone 3: Model Comparison ✓
+**Completed: June 5, 2026**
 
-The model is rebuilt on a points basis rather than league rank, addressing the ceiling problem where top coaches have no room to outperform a rank of first. Both the baseline model (raw squad value → points) and the enhanced model (minutes-weighted squad value → points) are evaluated and compared. The core hypothesis has a direct answer: does weighting by minutes improve predictive accuracy?
+Both models rebuilt on a points-per-game basis with league fixed effects and log-transformed, normalized squad values. Minutes-weighted squad value (`enhanced_fixed`) outperforms raw squad value (`baseline_fixed`) on every in-sample metric and in 9/10 seasons and 4/5 leagues in cross-validation. Mean out-of-sample RMSE improvement ~0.013. Combined model overfits and is dropped. Winning model: `enhanced_fixed` (R² = 0.731, RMSE = 0.238). Two documented limitations: Serie A 2018 data quality issue, and near-but-not-quite p < 0.05 significance due to small fold counts. Full analysis pipeline in `src/model_comparison.R`, reproducible via `run_milestone3()`.
 
 ---
 
 ## Milestone 4: Residual Analysis
-**Target: ~June 20**
+**Target: ~June 20 | Status: Active**
 
 Residuals from the best-performing model are computed for every team-season. The distribution and structure of those residuals is analyzed — do certain teams consistently over- or underperform their expected points? This milestone stands on its own: even without coach attribution, a reliable residual is a defensible analytical result.
 

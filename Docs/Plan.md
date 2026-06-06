@@ -18,8 +18,8 @@ Minutes-weighted squad value formula implemented: each player's market value is 
 
 ---
 
-## Milestone 3: Model Comparison
-**Target: ~June 6 | Status: Active**
+## Milestone 3: Model Comparison ✓
+**Completed: June 5, 2026**
 
 Both models are rebuilt on a points basis and rigorously evaluated. The milestone ends when there is a statistically confident answer to whether weighting by minutes produces a meaningfully better predictor of final points.
 
@@ -84,7 +84,7 @@ Both models have been compared using in-sample metrics, two cross-validation str
 ---
 
 ## Milestone 4: Residual Analysis
-**Target: ~June 20**
+**Target: ~June 20 | Status: Active**
 
 A clean, validated residual is computed for every team-season. The distribution and structure of residuals are analyzed to confirm they contain a real signal worth attributing to coaches.
 

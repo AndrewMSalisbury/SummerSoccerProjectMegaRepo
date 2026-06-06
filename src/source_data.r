@@ -348,7 +348,7 @@ xx_team_points <- function(matches) {
   matches |> 
     transform(home_team_points = points_from_goal_diff(home_team_goals - away_team_goals),
               away_team_points = points_from_goal_diff(away_team_goals - home_team_goals)) |> 
-    purrr::pmap_dfr(function(match_id, home_team_id, away_team_id, home_team_goals, away_team_goals, home_team_points, away_team_points) {
+    purrr::pmap_dfr(function(match_id, home_team_id, away_team_id, home_team_goals, away_team_goals, home_team_points, away_team_points, ...) {
       data.frame(
         team_season_id = c(home_team_id, away_team_id),
         team_points = c(home_team_points, away_team_points)
