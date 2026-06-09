@@ -102,6 +102,46 @@ At the individual level, **only Pep Guardiola achieves statistical significance*
 
 ---
 
+## Part 4: Does Coach Identity Improve Out-of-Sample Predictions?
+
+**Finding: Yes. Adding coach BLUPs to the model significantly reduces prediction error.**
+
+The strongest possible test of the coaching hypothesis is whether knowing who the coach is — based solely on their track record in prior seasons — makes predictions for a new season more accurate. A leave-one-season-out cross-validation was run comparing:
+
+- **Enhanced model:** `points_per_game ~ log(norm_weighted_value) + league` (the M3 winner)
+- **Augmented model:** enhanced prediction + games-weighted coach BLUP from training seasons only
+
+In each fold, BLUPs were estimated exclusively from the 9 training seasons. Coaches appearing in the held-out season for the first time (no prior data) received a BLUP of 0 — a conservative default. For teams with mid-season changes, the coach adjustment was a games-weighted average of their coaches' training BLUPs.
+
+| Fold | Enhanced RMSE | Augmented RMSE | Improvement |
+|---|---|---|---|
+| 2015 | 0.2444 | 0.2458 | -0.0014 |
+| 2016 | 0.2170 | 0.2103 | +0.0067 |
+| 2017 | 0.2187 | 0.2148 | +0.0038 |
+| 2018 | 0.3002 | 0.2949 | +0.0053 |
+| 2019 | 0.2706 | 0.2637 | +0.0069 |
+| 2020 | 0.2192 | 0.2196 | -0.0004 |
+| 2021 | 0.2091 | 0.2016 | +0.0075 |
+| 2022 | 0.2386 | 0.2309 | +0.0078 |
+| 2023 | 0.2190 | 0.2136 | +0.0054 |
+| 2024 | 0.2357 | 0.2333 | +0.0025 |
+| **MEAN** | **0.2373** | **0.2328** | **+0.0044** |
+
+**Paired t-test: p = 0.001, 95% CI lower bound = 0.0025.** 8 of 10 folds improved.
+
+The two non-improving folds are explainable: 2015 is the first fold, so coaches who only appear in 2015 have no training BLUP and default to 0, and BLUPs estimated from later career peaks may not reflect 2015 form. The 2020 result is essentially flat (-0.0004) and likely reflects COVID-season disruption.
+
+**Cumulative improvement chain:**
+
+| Step | RMSE improvement |
+|---|---|
+| Raw squad value → minutes-weighted (M3) | ~0.013 |
+| Minutes-weighted → +coach BLUP (new) | 0.0044 |
+
+Coach identity adds approximately one-third of the improvement that the weighting step added. This is not just a detectable signal — it is a useful predictive feature in a rigorous out-of-sample test.
+
+---
+
 ## Year 2 Dip
 
 A consistent but statistically inconclusive pattern was identified across multiple cuts of the data: a coach's second season at a club shows a lower residual than their first, regardless of whether the appointment was pre-season or mid-season. The effect reverses from year 3 onward and is not significant in the mixed model (p > 0.5 for pre-season appointments).
@@ -128,6 +168,6 @@ This is noted as a caveat on the rankings: long-tenured coaches at a single club
 
 ## Conclusion
 
-Both parts of the hypothesis are supported. Minutes-weighted squad value is a meaningfully better predictor of final points than raw squad value. The residual from that model contains a real, portable coaching signal: coach variance is statistically significant (p = 0.0011) and exceeds club variance, meaning performance above expectation follows the manager more than it stays at the club.
+All parts of the hypothesis are supported. Minutes-weighted squad value is a meaningfully better predictor of final points than raw squad value. The residual from that model contains a real, portable coaching signal: coach variance is statistically significant (p = 0.0011) and exceeds club variance, meaning performance above expectation follows the manager more than it stays at the club. Most importantly, incorporating coach identity into the prediction model significantly reduces out-of-sample prediction error (p = 0.001), confirming that the coaching signal is not merely detectable after the fact but genuinely useful for forecasting.
 
-The rankings are consistent with external assessments of coaching quality. Only Guardiola achieves individual statistical significance with the current data, but the global test establishes that the coaching signal is real. Extending the dataset to additional seasons and leagues would allow more coaches to reach individual significance and would sharpen the ranking for coaches currently represented by only a few seasons.
+The rankings are consistent with external assessments of coaching quality. Only Guardiola achieves individual statistical significance with the current data, but the global test establishes that the coaching signal is real. Extending the dataset to additional seasons and leagues would allow more coaches to reach individual significance, sharpen the rankings for coaches currently represented by only a few seasons, and strengthen the predictive augmentation.
