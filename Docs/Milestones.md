@@ -25,10 +25,10 @@ Both models rebuilt on a points-per-game basis with league fixed effects and log
 
 ---
 
-## Milestone 4: Residual Analysis
-**Target: ~June 20 | Status: Active**
+## Milestone 4: Residual Analysis ✓
+**Completed: June 9, 2026**
 
-Residuals from the best-performing model are computed for every team-season. The distribution and structure of those residuals is analyzed — do certain teams consistently over- or underperform their expected points? This milestone stands on its own: even without coach attribution, a reliable residual is a defensible analytical result.
+Residuals from `enhanced_fixed` computed for all 976 team-seasons (6 NA due to imputation edge case). Distribution is approximately normal (SD = 0.238 PPG, mean = 0) with heavy tails driven by the 2018 data quality issue. No heteroskedasticity detected — rankings equally reliable across all squad value tiers. Lag-1 temporal persistence r = 0.25: modest club effect, meaningful year-to-year variation. Full pipeline in `src/residual_analysis.R`, reproducible via `run_milestone4()`.
 
 ---
 

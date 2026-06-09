@@ -148,11 +148,10 @@ Coach-team-season assignments are scraped and integrated. Residuals are attribut
 
 ### Steps
 
-**1. Scrape coach-team-season data from Transfermarkt**
-- Add `xx_raw_coach_history()` to `source_data.r` following the existing scraping patterns.
-- Add `xx_data_coach_history()` with the same caching pattern as other data layer functions, storing to `data/cache/coaches.rds`.
-- Data to collect per entry: `coach_id`, `coach_name`, `team_season_id`, `date_appointed`, `date_departed` (if mid-season).
-- Validate that coach IDs are stable across team entries (i.e., the same coach at different clubs gets the same ID).
+**1. Scrape coach-team-season data from Transfermarkt** ✓
+- Implemented as `xx_raw_team_season_coach()` / `xx_data_coach()` in `source_data.r`, storing to `data/cache/coaches.rds`.
+- Schema: `team_season_id`, `coach_id` (Transfermarkt URL), `coach_name`, `date_from`, `date_to` (NA if still in charge at season end).
+- Coverage: 975 of 976 team-seasons scraped. One gap: SC Freiburg 2018 (lone scrape failure, negligible).
 
 **2. Validate coach data quality**
 - Check what percentage of team-seasons in the residuals table have matching coach data.
@@ -160,9 +159,10 @@ Coach-team-season assignments are scraped and integrated. Residuals are attribut
 - Document coverage — any unmatched team-seasons are excluded from M5 and flagged.
 
 **3. Define and apply the mid-season change rule**
-- For team-seasons with a mid-season manager change, decide how the residual is assigned.
-- Recommended approach: assign the full residual to the coach who managed the greater share of games; exclude team-seasons where neither coach managed more than 60% of games, as the signal is too mixed to attribute.
-- Document the chosen rule and its rationale explicitly — this is a methodological decision that should appear in any written summary.
+- Each match is attributed to the coach whose `[date_from, date_to]` tenure bracket covers the match date. A match on a coach's exact `date_from` belongs to the new coach.
+- Matches covered by no coach in the data (caretaker gaps, scrape misses) are dropped from both actual and expected for that stint — they contribute to neither numerator nor denominator.
+- For each coach stint: `partial_residual_ppg = (actual_points_in_stint / games_in_stint) − predicted_ppg`, where `predicted_ppg` is the squad-value model's season-level prediction (constant within the season).
+- No minimum games threshold is applied at this stage; very short stints are retained and can be filtered later if the data warrants it.
 
 **4. Join coach data to residuals**
 - Match each team-season residual to its coach using the rule from step 3.
