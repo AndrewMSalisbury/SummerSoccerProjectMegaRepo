@@ -400,7 +400,7 @@ xx_raw_all_league_seasons <- function() {
 
 xx_raw_team_seasons <- function(league_season_id) {
   cat('## crawling raw_team_seasons for', league_season_id, '\n')
-  Sys.sleep(10)
+  Sys.sleep(2)
   host_url <- "https://www.transfermarkt.com"
   season_page <- xx_fetch_page(league_season_id)
   if (is.null(season_page)) return(data.frame(team_season_id = character(), team_name = character()))
@@ -423,7 +423,7 @@ xx_raw_team_seasons <- function(league_season_id) {
 
 xx_raw_league_season_matches <- function(league_season_id) {
   cat('## crawling raw_league_season_matches for', league_season_id, '\n')
-  Sys.sleep(5)
+  Sys.sleep(2)
   # Change url of form: https://www.transfermarkt.com/premier-league/startseite/wettbewerb/GB1/plus/?saison_id=2024
   #     to url of form: https://www.transfermarkt.com/premier-league/gesamtspielplan/wettbewerb/GB1/?saison_id=2024
   league_season_results_url <- sub("startseite", "gesamtspielplan", sub("/plus/","/", league_season_id))
@@ -477,9 +477,9 @@ xx_raw_league_season_matches <- function(league_season_id) {
 
 xx_raw_team_player_info <- function(team_season_id) {
   cat('## crawling raw_team_player_info for', team_season_id, '\n')
-  Sys.sleep(15)
+  Sys.sleep(3)
   stats <- xx_raw_squad_stats(team_season_id)
-  Sys.sleep(10)
+  Sys.sleep(2)
   values <- xx_raw_player_market_value(team_season_id)
   merged <- full_join(stats, values, by = "player_url") |> 
     dplyr::select(player_url, player_name, player_age, player_position, minutes_played, player_market_value_euro) |> 
@@ -492,7 +492,7 @@ xx_raw_team_player_info <- function(team_season_id) {
 
 xx_raw_team_season_coach <- function(team_season_id) {
   cat('## crawling team_season_coach for', team_season_id, '\n')
-  Sys.sleep(10)
+  Sys.sleep(2)
   host_url <- "https://www.transfermarkt.com"
 
   empty_result <- data.frame(

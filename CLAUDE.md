@@ -26,7 +26,7 @@ source("tabler.R")
 all_correlations()   # computes rank-correlations across all cached league-seasons
 ```
 
-**Scraping is slow by design.** `xx_raw_team_seasons()` sleeps 10 seconds per page and `xx_raw_team_player_info()` sleeps 15 seconds to avoid rate-limiting Transfermarkt. Never remove these delays.
+**Scraping is slow by design.** `xx_raw_team_player_info()` sleeps 3+2 seconds per team, `xx_raw_team_season_coach()` and `xx_raw_team_seasons()` sleep 2 seconds each, and `xx_raw_league_season_matches()` sleeps 2 seconds. Never remove these delays.
 
 ## Architecture
 
