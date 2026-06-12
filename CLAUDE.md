@@ -17,7 +17,7 @@ source("source_data.r")   # auto-initializes the in-memory cache
 
 To populate the local cache for a set of seasons:
 ```r
-xx_data_populate_league_seasons(2015:2024)  # scrapes all 5 leagues for given years
+xx_data_populate_league_seasons(2015:2024)  # scrapes all 20 leagues for given years
 ```
 
 To run the analysis:
@@ -43,7 +43,7 @@ The in-memory cache (`xx_data_cache`) is a named list initialized by `xx_init_da
 
 **IDs throughout the project are Transfermarkt URLs**, not opaque integers. A `league_season_id` is a full URL like `https://www.transfermarkt.com/premier-league/startseite/wettbewerb/GB1/plus/?saison_id=2024`. A `team_season_id` is a team's Transfermarkt page URL for a specific season. A `player_id` is a player's Transfermarkt profile URL. This means joins between tables use URL string matching.
 
-The five supported leagues are declared as constants (`xx_league_id_PREMIER_LEAGUE`, etc.) and collected by `xx_all_leagues()`.
+Twenty supported leagues are declared as constants (`xx_league_id_PREMIER_LEAGUE`, `xx_league_id_PRO_LEAGUE`, etc.) and collected by `xx_all_leagues()`. The top 5 are the major European leagues; the remaining 15 are the next tier by global rating (Championship, Liga Portugal, Brazilian Serie A, MLS, Eredivisie, Danish Superliga, Ekstraklasa, Argentine Liga Profesional, J1 League, Süper Lig, Allsvenskan, HNL, Liga MX, LaLiga 2). League-season URLs are constructed directly from the base constant (`paste0(league_id, "/plus/?saison_id=", year)`) and do not depend on the worldfootballR CSV.
 
 ### Analysis Layer (`src/tabler.R`)
 

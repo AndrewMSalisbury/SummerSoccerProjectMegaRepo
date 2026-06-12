@@ -49,36 +49,67 @@ xx_fetch_page <- function(url) {
   })
 }
 
-# Individual leagues
+# Individual leagues — top 5
 xx_league_id_PREMIER_LEAGUE <- "https://www.transfermarkt.com/premier-league/startseite/wettbewerb/GB1"
-xx_league_id_LIGUE_1 <- "https://www.transfermarkt.com/ligue-1/startseite/wettbewerb/FR1"
-xx_league_id_LA_LIGA <- "https://www.transfermarkt.com/laliga/startseite/wettbewerb/ES1"
-xx_league_id_SERIE_A <- "https://www.transfermarkt.com/serie-a/startseite/wettbewerb/IT1"
-xx_league_id_BUNDESLIGA <- "https://www.transfermarkt.com/bundesliga/startseite/wettbewerb/L1"
+xx_league_id_LIGUE_1        <- "https://www.transfermarkt.com/ligue-1/startseite/wettbewerb/FR1"
+xx_league_id_LA_LIGA        <- "https://www.transfermarkt.com/laliga/startseite/wettbewerb/ES1"
+xx_league_id_SERIE_A        <- "https://www.transfermarkt.com/serie-a/startseite/wettbewerb/IT1"
+xx_league_id_BUNDESLIGA     <- "https://www.transfermarkt.com/bundesliga/startseite/wettbewerb/L1"
 
-# list all available leagues
+# Additional leagues (6–20 by global rating)
+xx_league_id_PRO_LEAGUE       <- "https://www.transfermarkt.com/jupiler-pro-league/startseite/wettbewerb/BE1"
+xx_league_id_CHAMPIONSHIP     <- "https://www.transfermarkt.com/championship/startseite/wettbewerb/GB2"
+xx_league_id_LIGA_PORTUGAL    <- "https://www.transfermarkt.com/liga-portugal/startseite/wettbewerb/PO1"
+xx_league_id_SERIE_A_BRAZIL   <- "https://www.transfermarkt.com/campeonato-brasileiro-serie-a/startseite/wettbewerb/BRA1"
+xx_league_id_MLS              <- "https://www.transfermarkt.com/major-league-soccer/startseite/wettbewerb/MLS1"
+xx_league_id_EREDIVISIE       <- "https://www.transfermarkt.com/eredivisie/startseite/wettbewerb/NL1"
+xx_league_id_SUPERLIGA        <- "https://www.transfermarkt.com/superliga/startseite/wettbewerb/DK1"
+xx_league_id_EKSTRAKLASA      <- "https://www.transfermarkt.com/ekstraklasa/startseite/wettbewerb/PL1"
+xx_league_id_LIGA_PROFESIONAL <- "https://www.transfermarkt.com/liga-profesional-de-futbol/startseite/wettbewerb/AR1N"
+xx_league_id_J_LEAGUE         <- "https://www.transfermarkt.com/j1-league/startseite/wettbewerb/JAP1"
+xx_league_id_SUPER_LIG        <- "https://www.transfermarkt.com/super-lig/startseite/wettbewerb/TR1"
+xx_league_id_ALLSVENSKAN      <- "https://www.transfermarkt.com/allsvenskan/startseite/wettbewerb/SE1"
+xx_league_id_HNL              <- "https://www.transfermarkt.com/1-hnl/startseite/wettbewerb/KR1"
+xx_league_id_LIGA_MX          <- "https://www.transfermarkt.com/liga-mx/startseite/wettbewerb/MEX1"
+xx_league_id_LALIGA_2         <- "https://www.transfermarkt.com/laliga2/startseite/wettbewerb/ES2"
+
+# Returns all 20 supported leagues.
 xx_all_leagues <- function() {
   c(
     xx_league_id_PREMIER_LEAGUE,
     xx_league_id_LIGUE_1,
     xx_league_id_LA_LIGA,
     xx_league_id_SERIE_A,
-    xx_league_id_BUNDESLIGA
+    xx_league_id_BUNDESLIGA,
+    xx_league_id_PRO_LEAGUE,
+    xx_league_id_CHAMPIONSHIP,
+    xx_league_id_LIGA_PORTUGAL,
+    xx_league_id_SERIE_A_BRAZIL,
+    xx_league_id_MLS,
+    xx_league_id_EREDIVISIE,
+    xx_league_id_SUPERLIGA,
+    xx_league_id_EKSTRAKLASA,
+    xx_league_id_LIGA_PROFESIONAL,
+    xx_league_id_J_LEAGUE,
+    xx_league_id_SUPER_LIG,
+    xx_league_id_ALLSVENSKAN,
+    xx_league_id_HNL,
+    xx_league_id_LIGA_MX,
+    xx_league_id_LALIGA_2
   )
 }
 
-# returns all league_season_ids for the given league
+# Returns all league-season entries for a given league (from cache/CSV).
 xx_league_seasons <- function(league_id) {
-  xx_data_all_league_seasons() |> 
-    dplyr::filter(.data$league_id == .env$league_id) |> 
+  xx_data_all_league_seasons() |>
+    dplyr::filter(.data$league_id == .env$league_id) |>
     dplyr::select(league_name, league_season_id, season_start_year)
 }
 
+# Constructs the league-season URL directly from the base league URL and year.
+# URL pattern: {league_id}/plus/?saison_id={season_year}
 xx_league_season_id <- function(league_id, season_year) {
-  xx_data_all_league_seasons() |> 
-    dplyr::filter(.data$league_id == .env$league_id &
-                  .data$season_start_year == season_year) |> 
-    dplyr::pull(league_season_id)
+  paste0(league_id, "/plus/?saison_id=", season_year)
 }
 
 # returns all teams for given league_season_id
