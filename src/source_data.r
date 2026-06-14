@@ -445,7 +445,9 @@ xx_raw_league_season_matches <- function(league_season_id) {
         purrr::map_df(function(match_tr) {
           field_tds <- match_tr |> rvest::html_elements('td')
           score_link <- field_tds[5] |> rvest::html_elements('a')
-          score_parts <- strsplit(score_link |> rvest::html_text(), ':')[[1]]
+          if (length(score_link) == 0) return(NULL)
+          score_parts <- strsplit(rvest::html_text(score_link), ':')[[1]]
+          if (length(score_parts) < 2) return(NULL)
           data.frame(
             match_id =
               score_link |>
