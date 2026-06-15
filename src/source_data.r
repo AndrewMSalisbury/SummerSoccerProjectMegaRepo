@@ -89,7 +89,6 @@ xx_all_leagues <- function() {
     xx_league_id_EREDIVISIE,
     xx_league_id_SUPERLIGA,
     xx_league_id_EKSTRAKLASA,
-    xx_league_id_LIGA_PROFESIONAL,
     xx_league_id_J_LEAGUE,
     xx_league_id_SUPER_LIG,
     xx_league_id_ALLSVENSKAN,
