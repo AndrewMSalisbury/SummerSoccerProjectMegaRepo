@@ -369,6 +369,9 @@ xx_data_coach <- function(team_season_id, force_recrawl = FALSE) {
 
 # Compute team points given a set of matches.
 xx_team_points <- function(matches) {
+  if (nrow(matches) == 0) {
+    return(data.frame(team_season_id = character(), total_points = integer()))
+  }
   points_from_goal_diff <- function(diff) {
     case_when(
       diff > 0 ~ 3,
@@ -376,7 +379,7 @@ xx_team_points <- function(matches) {
       TRUE ~ 0
     )
   }
-  matches |> 
+  matches |>
     transform(home_team_points = points_from_goal_diff(home_team_goals - away_team_goals),
               away_team_points = points_from_goal_diff(away_team_goals - home_team_goals)) |> 
     purrr::pmap_dfr(function(match_id, home_team_id, away_team_id, home_team_goals, away_team_goals, home_team_points, away_team_points, ...) {
