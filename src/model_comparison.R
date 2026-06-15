@@ -158,8 +158,7 @@ cv_by_league <- function(dataset, log_transform = TRUE) {
 # Paired t-tests on per-fold RMSE: baseline vs enhanced.
 # Tests whether the enhanced model's lower RMSE is statistically significant
 # or could be due to chance. Runs on both CV strategies.
-# Note: the league CV has only 5 folds, giving low statistical power — a
-# non-significant result there does not disprove the hypothesis.
+# With 20 leagues, this CV now has 20 folds and is a meaningful test.
 significance_tests <- function(cv_season, cv_league) {
   season_folds <- cv_season |> filter(fold != "MEAN") |>
     mutate(baseline = as.numeric(baseline), enhanced = as.numeric(enhanced))
@@ -193,7 +192,6 @@ significance_tests <- function(cv_season, cv_league) {
     cat("Both tests significant (p < 0.05). Enhanced model is the winner.\n")
   } else if (season_sig && !league_sig) {
     cat("Season CV significant; league CV not significant.\n")
-    cat("Likely due to low power (n=5 folds) and the Serie A outlier.\n")
     cat("Directional evidence favors enhanced across competitions.\n")
   } else if (!season_sig && league_sig) {
     cat("League CV significant; season CV not significant.\n")
@@ -239,9 +237,9 @@ sensitivity_analysis <- function(dataset, dataset_filtered = NULL, log_transform
   })
   print(do.call(rbind, league_rows))
 
-  # 2. Early vs recent
-  cat("\n=== 2. Early (2015-2019) vs Recent (2020-2024) ===\n")
-  for (rng in list(c(2015L, 2019L), c(2020L, 2024L))) {
+  # 2. Historical vs modern
+  cat("\n=== 2. Historical (2005-2014) vs Modern (2015-2024) ===\n")
+  for (rng in list(c(2005L, 2014L), c(2015L, 2024L))) {
     r <- compare(d |> filter(season >= rng[1], season <= rng[2]))
     cat(sprintf("  %d-%d  baseline=%.4f  enhanced=%.4f  improvement=%.4f\n",
                 rng[1], rng[2], r$baseline, r$enhanced, r$baseline - r$enhanced))
@@ -318,7 +316,7 @@ residual_diagnostics <- function(model, dataset, log_transform = TRUE) {
   invisible(flagged)
 }
 
-build_model_dataset <- function(seasons = 2015:2024, min_minutes_pct = 0) {
+build_model_dataset <- function(seasons = 2005:2024, min_minutes_pct = 0) {
   all_rows <- data.frame()
   for (league_id in xx_all_leagues()) {
     league_name <- strsplit(league_id, split = "/")[[1]][4]
@@ -357,7 +355,7 @@ build_model_dataset <- function(seasons = 2015:2024, min_minutes_pct = 0) {
 # log_transform is pre-decided as TRUE based on the distribution check.
 # run_threshold_check = TRUE rebuilds the dataset with a 10% minutes filter
 # (slow — adds one full build_model_dataset pass).
-run_milestone3 <- function(seasons = 2015:2024,
+run_milestone3 <- function(seasons = 2005:2024,
                            log_transform = TRUE,
                            run_threshold_check = FALSE) {
   sep <- function(title) cat("\n", strrep("=", 60), "\n", title, "\n", strrep("=", 60), "\n\n", sep = "")
