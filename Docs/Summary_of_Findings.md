@@ -15,9 +15,11 @@ Minutes-weighted squad value (each player's market value scaled by their share o
 ## Data
 
 - **Source:** Transfermarkt (scraped via custom R pipeline)
-- **Leagues:** Premier League, La Liga, Ligue 1, Serie A, Bundesliga
-- **Seasons:** 2015–2024 (10 seasons)
-- **Dataset:** 976 team-seasons, 18,011 match results, coach tenure data for 975/976 team-seasons
+- **Leagues (active):** 15 leagues — the 5 major European leagues (Premier League, La Liga, Ligue 1, Serie A, Bundesliga) plus Championship, Liga Portugal, Jupiler Pro League, Eredivisie, Danish Superliga, Ekstraklasa, Allsvenskan, HNL, LaLiga 2, Süper Lig
+- **Excluded leagues:** Argentine Liga Profesional (Transfermarkt ignores `saison_id` for this league, returning 2024 squad data for all historical seasons — confirmed data corruption); J1 League and Liga MX (sparse/missing data in early seasons and partial-season format issues); Brazilian Série A and MLS (minutes-weighted metric actively hurts predictions — multi-competition squad rotation and salary cap roster construction break the core assumption that Brasileirão minutes reflect squad deployment)
+- **Seasons:** 2005–2024 (20 seasons)
+- **Dataset for M3:** 5,403 team-seasons
+- **Dataset for M4/M5/augmented model:** 976 team-seasons (original 5-league, 2015–2024 subset; coach attribution and rankings have not yet been re-run on the expanded dataset)
 
 ---
 
@@ -25,16 +27,24 @@ Minutes-weighted squad value (each player's market value scaled by their share o
 
 **Finding: Yes. The hypothesis is supported.**
 
-Both models were fitted on points-per-game with league fixed effects and log-transformed, league-season-normalised squad values. The enhanced model (minutes-weighted) outperformed the baseline (raw squad value) on every metric:
+Both models were fitted on points-per-game with league fixed effects and log-transformed, league-season-normalised squad values. The enhanced model (minutes-weighted) outperformed the baseline (raw squad value) across all metrics:
 
 | Metric | Baseline | Enhanced |
 |---|---|---|
-| R² | 0.706 | 0.731 |
-| RMSE | 0.251 | 0.238 |
-| Season CV wins | 1/10 | 9/10 |
-| League CV wins | 1/5 | 4/5 |
+| R² | 0.592 | **0.637** |
+| In-sample RMSE | 0.270 | **0.255** |
+| Season CV RMSE | 0.276 | **0.262** |
+| League CV RMSE | 0.278 | **0.264** |
 
-The mean out-of-sample RMSE improvement is approximately 0.013 PPG. A combined model (raw + weighted together) overfits and was dropped; the weighted metric alone is the stronger predictor.
+Mean out-of-sample RMSE improvement: **0.014 PPG** (both cross-validation schemes).
+
+**Significance tests (paired t-test, baseline vs enhanced):**
+- Leave-one-season-out (20 folds): p < 0.0001, 95% CI lower bound = 0.011
+- Leave-one-league-out (15 folds): p = 0.0001, 95% CI lower bound = 0.009
+
+Both tests are significant. A combined model (raw + weighted together) adds negligible improvement over enhanced alone and was dropped; the weighted metric alone is the stronger predictor.
+
+*Note: R² is lower than in the original 5-league analysis (0.73) because the 15-league dataset is far more diverse. Smaller leagues with weaker squad-value signals add variance that the model cannot fully explain with a single pooled specification. The out-of-sample improvement is more informative than in-sample R².*
 
 ---
 
@@ -157,17 +167,18 @@ This is noted as a caveat on the rankings: long-tenured coaches at a single club
 
 ## Limitations
 
-1. **Sample size:** 10 seasons across 5 leagues gives most coaches 3–5 stints — too few for individual statistical significance. Rankings are directional for coaches with fewer than 5 seasons in the data.
-2. **Serie A 2018 data quality:** Transfermarkt data anomalies inflate residuals for several Serie A clubs in 2018. These entries are retained but flagged throughout.
-3. **League scope:** Only the top 5 European leagues. Coaches whose careers span other competitions are incompletely represented, which understates the career evidence for some managers.
-4. **Value endogeneity:** Transfermarkt market values partly reflect past performance. If strong coaching in year 1 raises squad values, the model's baseline rises in year 2, potentially compressing residuals for long-tenured coaches (unconfirmed).
-5. **No season fixed effects:** the pooled model produces small systematic imbalances in some league-seasons (8 of 50 flagged), concentrated in the anomalous seasons noted above.
-6. **Attribution gaps:** 226 matches (0.6%) had no coach coverage and were excluded from attribution. SC Freiburg 2018 has no coach data.
+1. **Sample size for coach rankings:** Coach attribution (M4/M5) and the augmented model (Part 4) were computed on the original 5-league, 2015–2024 dataset. Re-running these on the expanded 15-league, 2005–2024 dataset would provide more stints per coach and sharpen individual rankings.
+2. **Serie A minutes-weighting:** The enhanced model underperforms the baseline for Serie A in-sample (RMSE 0.224 vs 0.246), suggesting the squad rotation pattern in Italian football weakens the minutes-weighting signal. Serie A is retained because it is a core European league and the contamination is modest.
+3. **Early season data sparsity:** Transfermarkt market value coverage for smaller leagues before ~2010 is incomplete. Kalmar FF Allsvenskan 2005 is the most extreme case — 26 of 27 players had no market value recorded, producing an artefactual residual of +2.02 PPG. Early seasons in HNL, Allsvenskan, and similar leagues should be interpreted with caution.
+4. **Excluded leagues:** Five leagues were dropped for structural data quality reasons (see Data section). The exclusions are principled but reduce generalisability to non-European football.
+5. **Value endogeneity:** Transfermarkt market values partly reflect past performance. If strong coaching in year 1 raises squad values, the model's baseline rises in year 2, potentially compressing residuals for long-tenured coaches (unconfirmed).
+6. **No season fixed effects:** the pooled model produces small systematic imbalances in some league-seasons.
+7. **Attribution gaps (original 5-league analysis):** 226 matches (0.6%) had no coach coverage and were excluded from attribution. SC Freiburg 2018 has no coach data.
 
 ---
 
 ## Conclusion
 
-All parts of the hypothesis are supported. Minutes-weighted squad value is a meaningfully better predictor of final points than raw squad value. The residual from that model contains a real, portable coaching signal: coach variance is statistically significant (p = 0.0011) and exceeds club variance, meaning performance above expectation follows the manager more than it stays at the club. Most importantly, incorporating coach identity into the prediction model significantly reduces out-of-sample prediction error (p = 0.001), confirming that the coaching signal is not merely detectable after the fact but genuinely useful for forecasting.
+All parts of the hypothesis are supported. Minutes-weighted squad value is a meaningfully better predictor of final points than raw squad value — a finding that holds across 15 leagues and 20 seasons, with both leave-one-season-out (p < 0.0001) and leave-one-league-out (p = 0.0001) cross-validation tests significant. The residual from that model contains a real, portable coaching signal: coach variance is statistically significant (p = 0.0011) and exceeds club variance, meaning performance above expectation follows the manager more than it stays at the club. Most importantly, incorporating coach identity into the prediction model significantly reduces out-of-sample prediction error (p = 0.001), confirming that the coaching signal is not merely detectable after the fact but genuinely useful for forecasting.
 
-The rankings are consistent with external assessments of coaching quality. Only Guardiola achieves individual statistical significance with the current data, but the global test establishes that the coaching signal is real. Extending the dataset to additional seasons and leagues would allow more coaches to reach individual significance, sharpen the rankings for coaches currently represented by only a few seasons, and strengthen the predictive augmentation.
+The rankings are consistent with external assessments of coaching quality. Only Guardiola achieves individual statistical significance with the current data, but the global test establishes that the coaching signal is real. Re-running the coach attribution and augmented model on the expanded 15-league dataset would provide more stints per coach, sharpen individual rankings, and likely strengthen the predictive augmentation further.

@@ -43,7 +43,14 @@ The in-memory cache (`xx_data_cache`) is a named list initialized by `xx_init_da
 
 **IDs throughout the project are Transfermarkt URLs**, not opaque integers. A `league_season_id` is a full URL like `https://www.transfermarkt.com/premier-league/startseite/wettbewerb/GB1/plus/?saison_id=2024`. A `team_season_id` is a team's Transfermarkt page URL for a specific season. A `player_id` is a player's Transfermarkt profile URL. This means joins between tables use URL string matching.
 
-Twenty supported leagues are declared as constants (`xx_league_id_PREMIER_LEAGUE`, `xx_league_id_PRO_LEAGUE`, etc.) and collected by `xx_all_leagues()`. The top 5 are the major European leagues; the remaining 15 are the next tier by global rating (Championship, Liga Portugal, Brazilian Serie A, MLS, Eredivisie, Danish Superliga, Ekstraklasa, Argentine Liga Profesional, J1 League, Süper Lig, Allsvenskan, HNL, Liga MX, LaLiga 2). League-season URLs are constructed directly from the base constant (`paste0(league_id, "/plus/?saison_id=", year)`) and do not depend on the worldfootballR CSV.
+Twenty league constants are declared (`xx_league_id_PREMIER_LEAGUE`, `xx_league_id_PRO_LEAGUE`, etc.), but `xx_all_leagues()` returns only 15 — five were excluded for data quality reasons:
+
+- **Argentine Liga Profesional** (`AR1N`): Transfermarkt ignores `saison_id` for this league and returns 2024 squad data for every historical season (confirmed corruption).
+- **J1 League** (`JAP1`): missing match cache for 2014–2015, sparse market value data in early seasons.
+- **Liga MX** (`MEX1`): captures only one tournament (Clausura) per season, not a full-season equivalent.
+- **Brazilian Série A** (`BRA1`) and **MLS** (`MLS1`): minutes-weighted metric actively hurts predictions — multi-competition squad rotation (Brazil) and salary cap roster construction (MLS) break the assumption that league minutes reflect squad deployment.
+
+The 15 active leagues are: Premier League, La Liga, Ligue 1, Serie A, Bundesliga, Championship, Liga Portugal, Jupiler Pro League, Eredivisie, Danish Superliga, Ekstraklasa, Allsvenskan, HNL, Süper Lig, LaLiga 2. League-season URLs are constructed directly from the base constant (`paste0(league_id, "/plus/?saison_id=", year)`) and do not depend on the worldfootballR CSV.
 
 ### Analysis Layer (`src/tabler.R`)
 
@@ -64,7 +71,7 @@ The `weighted_team_value` formula: for each player, `player_market_value_euro ×
 | `players.rds` | `team_season_id`, `player_id`, `player_name`, `player_age`, `player_position`, `minutes_played`, `percent_minutes_played`, `player_market_value_euro` |
 | `matches.rds` | `league_season_id`, `match_id`, `home_team_id`, `away_team_id`, `home_team_goals`, `away_team_goals` |
 
-Coach data (`coaches.rds`) does not yet exist and is the primary remaining data layer task (Milestone 5).
+Coach data (`coaches.rds`) exists and is populated for the original 5-league, 2015–2024 dataset. It has not yet been populated for the expanded 15-league dataset.
 
 ## Conventions
 

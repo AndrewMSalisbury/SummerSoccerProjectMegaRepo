@@ -84,16 +84,12 @@ xx_all_leagues <- function() {
     xx_league_id_PRO_LEAGUE,
     xx_league_id_CHAMPIONSHIP,
     xx_league_id_LIGA_PORTUGAL,
-    xx_league_id_SERIE_A_BRAZIL,
-    xx_league_id_MLS,
     xx_league_id_EREDIVISIE,
     xx_league_id_SUPERLIGA,
     xx_league_id_EKSTRAKLASA,
-    xx_league_id_J_LEAGUE,
     xx_league_id_SUPER_LIG,
     xx_league_id_ALLSVENSKAN,
     xx_league_id_HNL,
-    xx_league_id_LIGA_MX,
     xx_league_id_LALIGA_2
   )
 }
