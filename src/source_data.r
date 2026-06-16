@@ -88,7 +88,6 @@ xx_all_leagues <- function() {
     xx_league_id_SUPERLIGA,
     xx_league_id_EKSTRAKLASA,
     xx_league_id_SUPER_LIG,
-    xx_league_id_ALLSVENSKAN,
     xx_league_id_HNL,
     xx_league_id_LALIGA_2
   )

@@ -70,9 +70,59 @@ Kalmar FF 2005 had Cook's D = 0.034, roughly 3× the next-highest entry. Investi
 
 ---
 
+---
+
+## Part 2: Data Quality Investigation and Further Refinements
+
+### B Team Flag (LaLiga 2)
+
+`league_value_fit_diagnostic()` (new function, see below) showed LaLiga 2 had R²=0.166 despite €19.3M average squad value — worse than Ekstraklasa (R²=0.636, €14.5M). Root cause: B teams (FC Barcelona B, Real Madrid Castilla, Sevilla Atlético, Bilbao Athletic, Villarreal CF B, Real Sociedad B, Málaga CF B) are registered on Transfermarkt with first-team squad valuations but compete in the second division. The model predicts them to score like top-flight clubs; they don't.
+
+Decision: add `is_b_team` as a covariate rather than dropping LaLiga 2. Implemented via regex in `build_model_dataset()`:
+```r
+grepl(" B$|Castilla|Bilbao Athletic|Mestalla|Fabril|Sevilla Atlético", team_name)
+```
+Seven B team entries confirmed across all 20 seasons. LaLiga 2 R² improved from 0.166 to 0.264.
+
+A rank-deficient warning emerged in `cv_by_league()`: when LaLiga 2 is the test fold, the training data contains no B teams, making `is_b_team` a constant. Fixed by conditionally including `is_b_team` in the league CV formula only when `any(train$is_b_team)` is TRUE.
+
+### Allsvenskan Data Coverage Investigation
+
+Minutes-coverage analysis (% of minutes played by players with non-NA market values):
+
+| Season | Allsvenskan | Ekstraklasa |
+|---|---|---|
+| 2005 | 23.6% | 99.9% |
+| 2006 | 48.8% | 99.8% |
+| 2010 | 89.2% | 99.7% |
+| 2024 | 88.7% | 100.0% |
+
+Ekstraklasa has near-100% coverage across all 20 seasons. Allsvenskan was catastrophically sparse in 2005–2006 and never exceeded 94% even in modern seasons. This directly explains the R² gap (Allsvenskan 0.159 vs Ekstraklasa 0.640) — it is purely a data completeness problem on Transfermarkt, not a structural issue with Swedish football.
+
+Decision: drop Allsvenskan entirely. The data is fundamentally incomplete and the metric is unreliable for this league across the full time span.
+
+### league_value_fit_diagnostic() Function
+
+New function added to `model_comparison.R`. Joins per-league mean squad value (in €M) with in-sample RMSE and R² from the enhanced_fixed model residuals. Prints a table sorted by squad value and reports correlations. Call with `league_value_fit_diagnostic(results$dataset)`.
+
+Final diagnostic results (14 leagues):
+- Correlation (log squad value vs RMSE): −0.364
+- Correlation (log squad value vs R²): +0.526
+- Removing Allsvenskan weakened both correlations (from −0.552 / +0.627), confirming it was a double outlier driving the pattern rather than a genuine relationship between league wealth and model fit quality.
+
+### Final Dataset (after all exclusions)
+
+- **Leagues:** 14 (5 major European + Championship, Liga Portugal, Jupiler Pro League, Eredivisie, Danish Superliga, Ekstraklasa, HNL, Süper Lig, LaLiga 2)
+- **Seasons:** 2005–2024
+- **Rows:** 5,087 team-seasons
+
+---
+
 ## Files Modified
 
-- `src/source_data.r` — removed `xx_league_id_J_LEAGUE`, `xx_league_id_LIGA_MX`, `xx_league_id_SERIE_A_BRAZIL`, `xx_league_id_MLS` from `xx_all_leagues()`
+- `src/source_data.r` — removed `xx_league_id_J_LEAGUE`, `xx_league_id_LIGA_MX`, `xx_league_id_SERIE_A_BRAZIL`, `xx_league_id_MLS`, `xx_league_id_ALLSVENSKAN` from `xx_all_leagues()`
+- `src/model_comparison.R` — added `is_b_team` to `build_model_dataset()`, all model formulas, and both CV functions; added `league_value_fit_diagnostic()`; fixed rank-deficient warning in `cv_by_league()`
 - `Docs/Summary_of_Findings.md` — updated Data section, Part 1 metrics, Limitations, Conclusion
-- `CLAUDE.md` — updated league description to reflect 15 active leagues and exclusion rationale
+- `CLAUDE.md` — updated league description to reflect active leagues and exclusion rationale
 - `Docs/Session_Log_2026-06-15.md` — this file
+- `Docs/Progress_Report_2026-06-15.md` — session progress report

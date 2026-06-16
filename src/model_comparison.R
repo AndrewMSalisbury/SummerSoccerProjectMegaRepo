@@ -61,12 +61,12 @@ fit_models <- function(dataset, log_transform = TRUE) {
   f <- function(...) as.formula(paste("points_per_game ~", paste(..., sep = " + ")))
 
   list(
-    baseline_ppg   = lm(f(tv),                        data = d),
-    enhanced_ppg   = lm(f(wv),                        data = d),
-    combined_ppg   = lm(f(tv, wv),                    data = d),
-    baseline_fixed = lm(f(tv,       "as.factor(league)"), data = d),
-    enhanced_fixed = lm(f(wv,       "as.factor(league)"), data = d),
-    combined_fixed = lm(f(tv, wv,   "as.factor(league)"), data = d)
+    baseline_ppg   = lm(f(tv,           "is_b_team"),                        data = d),
+    enhanced_ppg   = lm(f(wv,           "is_b_team"),                        data = d),
+    combined_ppg   = lm(f(tv, wv,       "is_b_team"),                        data = d),
+    baseline_fixed = lm(f(tv,           "as.factor(league)", "is_b_team"),   data = d),
+    enhanced_fixed = lm(f(wv,           "as.factor(league)", "is_b_team"),   data = d),
+    combined_fixed = lm(f(tv, wv,       "as.factor(league)", "is_b_team"),   data = d)
   )
 }
 
@@ -107,9 +107,9 @@ cv_by_season <- function(dataset, log_transform = TRUE) {
     test  <- d |> filter(season == s)
     data.frame(
       fold     = s,
-      baseline = rmse(test$points_per_game, predict(lm(f(tv),     data = train), test)),
-      enhanced = rmse(test$points_per_game, predict(lm(f(wv),     data = train), test)),
-      combined = rmse(test$points_per_game, predict(lm(f(tv, wv), data = train), test))
+      baseline = rmse(test$points_per_game, predict(lm(f(tv,      "is_b_team"), data = train), test)),
+      enhanced = rmse(test$points_per_game, predict(lm(f(wv,      "is_b_team"), data = train), test)),
+      combined = rmse(test$points_per_game, predict(lm(f(tv, wv,  "is_b_team"), data = train), test))
     )
   })
   result <- do.call(rbind, rows)
@@ -139,11 +139,15 @@ cv_by_league <- function(dataset, log_transform = TRUE) {
   rows <- lapply(sort(unique(d$league)), function(lg) {
     train <- d |> filter(league != lg)
     test  <- d |> filter(league == lg)
+    f2 <- function(...) {
+      terms <- c(..., if (any(train$is_b_team)) "is_b_team" else NULL)
+      as.formula(paste("points_per_game ~", paste(terms, collapse = " + ")))
+    }
     data.frame(
       fold     = lg,
-      baseline = rmse(test$points_per_game, predict(lm(f(tv),     data = train), test)),
-      enhanced = rmse(test$points_per_game, predict(lm(f(wv),     data = train), test)),
-      combined = rmse(test$points_per_game, predict(lm(f(tv, wv), data = train), test))
+      baseline = rmse(test$points_per_game, predict(lm(f2(tv),     data = train), test)),
+      enhanced = rmse(test$points_per_game, predict(lm(f2(wv),     data = train), test)),
+      combined = rmse(test$points_per_game, predict(lm(f2(tv, wv), data = train), test))
     )
   })
   result <- do.call(rbind, rows)
@@ -336,6 +340,7 @@ build_model_dataset <- function(seasons = 2005:2024, min_minutes_pct = 0) {
       chart$norm_total_value    <- chart$total_team_value    / mean(chart$total_team_value,    na.rm = TRUE)
       chart$norm_weighted_value <- chart$weighted_team_value / mean(chart$weighted_team_value, na.rm = TRUE)
       chart$points_per_game     <- chart$total_points / chart$games_played
+      chart$is_b_team           <- grepl(" B$|Castilla|Bilbao Athletic|Mestalla|Fabril|Sevilla Atlético", chart$team_name)
 
       all_rows <- rbind(all_rows, chart)
     }
@@ -346,7 +351,8 @@ build_model_dataset <- function(seasons = 2005:2024, min_minutes_pct = 0) {
            total_team_value, weighted_team_value,
            norm_total_value, norm_weighted_value,
            total_points, games_played, points_per_game,
-           total_value_rank, weighted_value_rank, points_rank)
+           total_value_rank, weighted_value_rank, points_rank,
+           is_b_team)
 }
 
 # Runs the full Milestone 3 analysis pipeline in order.
@@ -418,4 +424,59 @@ run_milestone3 <- function(seasons = 2005:2024,
     cv_league = cv_league,
     flagged   = flagged
   ))
+}
+
+# Tests whether leagues with lower average squad value have worse model fit.
+# Fits enhanced_fixed on the full dataset, then computes per-league RMSE and R²
+# from residuals and joins to mean squad value per league.
+# Prints a sorted table and two scatter plots (RMSE and R² vs log squad value).
+# Returns the joined data frame invisibly.
+league_value_fit_diagnostic <- function(dataset = NULL) {
+  if (is.null(dataset)) dataset <- build_model_dataset()
+
+  league_values <- dataset |>
+    dplyr::group_by(league) |>
+    dplyr::summarise(
+      mean_squad_value_M = mean(total_team_value, na.rm = TRUE) / 1e6,
+      n = dplyr::n(),
+      .groups = "drop"
+    )
+
+  d <- dataset |> dplyr::filter(norm_weighted_value > 0)
+  model <- lm(points_per_game ~ log(norm_weighted_value) + as.factor(league) + is_b_team, data = d)
+  d$resid <- residuals(model)
+
+  league_fit <- d |>
+    dplyr::group_by(league) |>
+    dplyr::summarise(
+      rmse = sqrt(mean(resid^2)),
+      r2   = 1 - sum(resid^2) / sum((points_per_game - mean(points_per_game))^2),
+      .groups = "drop"
+    )
+
+  result <- league_fit |>
+    dplyr::left_join(league_values, by = "league") |>
+    dplyr::arrange(mean_squad_value_M)
+
+  print(result, n = nrow(result))
+
+  cat(sprintf("\nCorr (log squad value vs RMSE): %.3f\n", cor(log(result$mean_squad_value_M), result$rmse)))
+  cat(sprintf("Corr (log squad value vs R²):   %.3f\n", cor(log(result$mean_squad_value_M), result$r2)))
+
+  op <- par(mfrow = c(1, 2), mar = c(5, 4, 3, 1))
+  on.exit(par(op))
+
+  plot(log(result$mean_squad_value_M), result$rmse,
+       xlab = "log(mean squad value, €M)", ylab = "In-sample RMSE",
+       main = "Squad Value vs RMSE", pch = 16, col = "steelblue")
+  text(log(result$mean_squad_value_M), result$rmse,
+       labels = result$league, cex = 0.65, pos = 4)
+
+  plot(log(result$mean_squad_value_M), result$r2,
+       xlab = "log(mean squad value, €M)", ylab = "In-sample R²",
+       main = "Squad Value vs R²", pch = 16, col = "coral")
+  text(log(result$mean_squad_value_M), result$r2,
+       labels = result$league, cex = 0.65, pos = 4)
+
+  invisible(result)
 }
