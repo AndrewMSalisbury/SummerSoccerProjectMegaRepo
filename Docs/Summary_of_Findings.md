@@ -165,9 +165,88 @@ This is noted as a caveat on the rankings: long-tenured coaches at a single club
 
 ---
 
+## Part 5: Expanded Dataset — M4/M5 Re-run (14 Leagues, 2005–2024)
+
+M4 and M5 were re-run on the full expanded dataset. A minutes-coverage filter (≥80% of team minutes must have valued players) was applied before coach attribution to exclude team-seasons where sparse Transfermarkt data would produce artefactual residuals — 88 team-seasons were dropped, 4,999 retained.
+
+### Residual Analysis (14 leagues)
+
+- 5,080 valid residuals (7 NA from non-positive normalised squad value)
+- Distribution: mean = 0, SD = 0.242 PPG, approximately normal
+- No heteroskedasticity detected — rankings equally reliable across all squad value tiers
+- Lag-1 temporal persistence: r = 0.203, CI [0.174, 0.232] — slightly lower than the original 5-league result (r = 0.25), consistent with more diverse leagues adding noise
+
+### Coach Attribution (14 leagues)
+
+| Component | Variance | % of total |
+|---|---|---|
+| Coach | 0.0029 | 1.9% |
+| Club | 0.0051 | 3.4% |
+| Residual | 0.1434 | 94.7% |
+
+**Likelihood ratio test: χ² = 6.87, df = 1, p = 0.0088.**
+
+The coach effect remains statistically significant, but club variance now exceeds coach variance. This reversal from the original result reflects the composition of the expanded dataset: most coaches in smaller leagues never move between leagues, making cross-club portability hard to detect. Dominant clubs in smaller leagues (Dinamo Zagreb, Legia Warsaw, Club Brugge) also create strong persistent club signals that inflate the club component.
+
+### Top-5-Leagues Comparison (2005–2024)
+
+To isolate the elite-coaching signal, M4 and M5 were re-run on the 5 major European leagues only across all 20 seasons. This represents the highest-quality cut of the data: the coaches with the most cross-league experience and the most stints in the dataset.
+
+| Component | Variance | % of total |
+|---|---|---|
+| Coach | 0.0045 | 3.6% |
+| Club | 0.0044 | 3.6% |
+| Residual | 0.1156 | 92.8% |
+
+**Likelihood ratio test: χ² = 7.23, df = 1, p = 0.0072.**
+
+Coach and club variance are essentially tied. This sits between the original 5-league result (coach 8.5% > club 4.9%, 2015–2024 only) and the 14-league result. Extending to 20 seasons gives elite clubs more time to accumulate a stable identity signal, narrowing the gap — but the coach effect holds its own.
+
+**How the coach/club relationship varies across dataset cuts:**
+
+| Dataset | Coach % | Club % | Coach > Club? |
+|---|---|---|---|
+| 5 leagues, 2015–2024 (original) | 8.5% | 4.9% | Yes |
+| 5 leagues, 2005–2024 | 3.6% | 3.6% | Tied |
+| 14 leagues, 2005–2024 | 1.9% | 3.4% | No |
+
+The pattern is interpretable: in datasets where elite coaches move frequently between leagues (the top-5 context), their portable effect is easier to detect and exceeds club-level persistence. In broader datasets with more locally-anchored coaches, club environment dominates.
+
+### Updated Coach Rankings (top-5 leagues, 2005–2024)
+
+Rankings use BLUPs from the top-5-leagues run, which offers the most stints per coach and the cleanest separation of coach from club effects. Three coaches achieve individual significance after FDR correction: Guardiola, Ferguson, Xavi.
+
+**Top 15 coaches:**
+
+| Rank | Coach | Stints | Games | Clubs | BLUP |
+|---|---|---|---|---|---|
+| 1 | Pep Guardiola | 16 | 596 | 3 | +0.118 |
+| 2 | Alex Ferguson | 8 | 304 | 1 | +0.085 |
+| 3 | Thomas Tuchel | 15 | 426 | 5 | +0.081 |
+| 4 | Antonio Conte | 11 | 357 | 6 | +0.080 |
+| 5 | Jürgen Klopp | 18 | 640 | 3 | +0.075 |
+| 6 | Igor Tudor | 7 | 116 | 5 | +0.074 |
+| 7 | Massimiliano Allegri | 13 | 468 | 3 | +0.067 |
+| 8 | Claudio Ranieri | 17 | 490 | 11 | +0.062 |
+| 9 | Unai Emery | 19 | 638 | 7 | +0.060 |
+| 10 | Simone Inzaghi | 10 | 349 | 2 | +0.057 |
+| 11 | Urs Fischer | 5 | 147 | 1 | +0.053 |
+| 12 | Marcelino | 16 | 447 | 8 | +0.052 |
+| 13 | Jupp Heynckes | 7 | 187 | 3 | +0.052 |
+| 14 | Manuel Pellegrini | 18 | 655 | 6 | +0.051 |
+| 15 | Jorge Jesus | 16 | 490 | 6 | +0.044 |
+
+**Notable findings:**
+- **Claudio Ranieri** (17 stints, 11 clubs): the most portable coach in the dataset. Consistent overperformance across an extraordinary range of clubs and contexts — the strongest portability finding in the analysis.
+- **Marcelo Bielsa** (7 stints, 4 clubs, BLUP −0.070): consistently underperforms squad value across multiple clubs despite strong tactical reputation. A high-profile negative result.
+- **Eusebio Di Francesco** (12 stints, 8 clubs, BLUP −0.060): strong negative portability — consistent underperformance across diverse environments.
+- **Frank Lampard** (5 stints, 2 clubs, BLUP −0.062): has not converted playing ability into management results in this dataset.
+
+---
+
 ## Limitations
 
-1. **Sample size for coach rankings:** Coach attribution (M4/M5) and the augmented model (Part 4) were computed on the original 5-league, 2015–2024 dataset. Re-running these on the expanded 15-league, 2005–2024 dataset would provide more stints per coach and sharpen individual rankings.
+1. **Sample size for coach rankings:** Coach attribution (M4/M5) and the augmented model (Part 4) were computed on the original 5-league, 2015–2024 dataset. Re-running these on the expanded 15-league, 2005–2024 dataset would provide more stints per coach and sharpen individual rankings. *(M4/M5 have since been re-run on the expanded dataset — see Part 5. The augmented model from Part 4 has not yet been re-run on the expanded data.)*
 2. **Serie A minutes-weighting:** The enhanced model underperforms the baseline for Serie A in-sample (RMSE 0.224 vs 0.246), suggesting the squad rotation pattern in Italian football weakens the minutes-weighting signal. Serie A is retained because it is a core European league and the contamination is modest.
 3. **Early season data sparsity:** Transfermarkt market value coverage for smaller leagues before ~2010 is incomplete. Kalmar FF Allsvenskan 2005 is the most extreme case — 26 of 27 players had no market value recorded, producing an artefactual residual of +2.02 PPG. Early seasons in HNL, Allsvenskan, and similar leagues should be interpreted with caution.
 4. **Excluded leagues:** Five leagues were dropped for structural data quality reasons (see Data section). The exclusions are principled but reduce generalisability to non-European football.
