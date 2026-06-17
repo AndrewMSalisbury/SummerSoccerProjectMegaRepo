@@ -320,9 +320,9 @@ residual_diagnostics <- function(model, dataset, log_transform = TRUE) {
   invisible(flagged)
 }
 
-build_model_dataset <- function(seasons = 2005:2024, min_minutes_pct = 0) {
+build_model_dataset <- function(seasons = 2005:2024, min_minutes_pct = 0, leagues = xx_all_leagues()) {
   all_rows <- data.frame()
-  for (league_id in xx_all_leagues()) {
+  for (league_id in leagues) {
     league_name <- strsplit(league_id, split = "/")[[1]][4]
     for (season in seasons) {
       league_season_id <- xx_league_season_id(league_id, season)

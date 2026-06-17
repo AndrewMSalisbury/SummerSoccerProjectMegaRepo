@@ -12,7 +12,7 @@ compute_residuals <- function(dataset, log_transform = TRUE) {
   }
 
   model <- lm(
-    points_per_game ~ log(norm_weighted_value) + as.factor(league),
+    points_per_game ~ log(norm_weighted_value) + as.factor(league) + is_b_team,
     data = d_fit
   )
 
@@ -294,6 +294,7 @@ plot_team_heatmap <- function(residuals_tbl, min_seasons = 5) {
     lim    <- max(abs(mat), na.rm = TRUE)
     breaks <- seq(-lim, lim, length.out = 102)
 
+    dev.new()
     par(mar = c(3, 8, 3, 4))
     image(x = seq_along(seasons),
           y = seq_along(team_order),
@@ -310,12 +311,46 @@ plot_team_heatmap <- function(residuals_tbl, min_seasons = 5) {
   }
 }
 
+# For the top and bottom n team-seasons by residual_points, reports the
+# percentage of minutes played by players who have a non-NA market value.
+# Low coverage is the primary explanation for spuriously large residuals in
+# early seasons of smaller leagues where Transfermarkt data is sparse.
+minutes_coverage <- function(residuals_tbl, n = 15) {
+  clean <- residuals_tbl |> filter(!is.na(residual))
+
+  top_ids    <- clean |> arrange(desc(residual_points)) |> head(n) |> pull(team_season_id)
+  bottom_ids <- clean |> arrange(residual_points)       |> head(n) |> pull(team_season_id)
+  ids        <- unique(c(top_ids, bottom_ids))
+
+  coverage <- xx_data_cache$players |>
+    filter(team_season_id %in% ids) |>
+    group_by(team_season_id) |>
+    summarize(
+      total_minutes  = sum(minutes_played, na.rm = TRUE),
+      valued_minutes = sum(minutes_played[!is.na(player_market_value_euro)], na.rm = TRUE),
+      pct_covered    = round(100 * valued_minutes / total_minutes, 1),
+      .groups = "drop"
+    )
+
+  joined <- clean |>
+    filter(team_season_id %in% ids) |>
+    left_join(coverage, by = "team_season_id") |>
+    select(team_name, league, season, residual_points, residual, pct_covered)
+
+  cat("=== Top", n, "Overperformers — Minutes Coverage ===\n")
+  print(joined |> arrange(desc(residual_points)) |> head(n), n = Inf)
+  cat("\n=== Top", n, "Underperformers — Minutes Coverage ===\n")
+  print(joined |> arrange(residual_points) |> head(n), n = Inf)
+
+  invisible(joined)
+}
+
 # Runs the full Milestone 4 pipeline in order. Returns all results invisibly.
-run_milestone4 <- function(seasons = 2015:2024, log_transform = TRUE) {
+run_milestone4 <- function(seasons = 2005:2024, log_transform = TRUE, leagues = xx_all_leagues()) {
   sep <- function(title) cat("\n", strrep("=", 60), "\n", title, "\n", strrep("=", 60), "\n\n", sep = "")
 
   sep("STEP 1: BUILD DATASET & COMPUTE RESIDUALS")
-  dataset       <- build_model_dataset(seasons)
+  dataset       <- build_model_dataset(seasons, leagues = leagues)
   cat("Rows loaded:", nrow(dataset), "\n")
   residuals_tbl <- compute_residuals(dataset, log_transform = log_transform)
   cat("NA residuals:", sum(is.na(residuals_tbl$residual)), "\n")
@@ -335,7 +370,7 @@ run_milestone4 <- function(seasons = 2015:2024, log_transform = TRUE) {
   sep("STEP 6: VISUALIZATIONS")
   cat("Bar chart — premier-league 2023 (call plot_league_season_bars() for others):\n")
   plot_league_season_bars(residuals_tbl, "premier-league", 2023)
-  cat("Team heatmaps (all 5 leagues):\n")
+  cat("Team heatmaps (all leagues):\n")
   plot_team_heatmap(residuals_tbl)
 
   sep("MILESTONE 4 COMPLETE")

@@ -93,7 +93,8 @@ validate_coach_coverage <- function(coach_residuals_tbl, residuals_tbl) {
 
   cat("Stints of <=5 games:              ", nrow(short_stints), "\n")
   if (nrow(short_stints) > 0) {
-    print(short_stints, n = Inf)
+    print(head(short_stints, 15), n = Inf)
+    if (nrow(short_stints) > 15) cat("... (", nrow(short_stints) - 15, "more not shown)\n")
   }
 
   invisible(list(
@@ -163,10 +164,12 @@ add_significance <- function(coach_stats, alpha = 0.05) {
     mutate(
       t_stat   = mean_residual / se_residual,
       df       = n_stints - 1,
-      p_value  = if_else(n_stints < 2, NA_real_, 2 * pt(-abs(t_stat), df = df)),
-      ci_lower = if_else(n_stints < 2, NA_real_, mean_residual - qt(0.975, df = df) * se_residual),
-      ci_upper = if_else(n_stints < 2, NA_real_, mean_residual + qt(0.975, df = df) * se_residual)
+      untestable = n_stints < 2 | is.na(se_residual) | se_residual == 0,
+      p_value  = if_else(untestable, NA_real_, 2 * pt(-abs(t_stat), df = df)),
+      ci_lower = if_else(untestable, NA_real_, mean_residual - qt(0.975, df = pmax(df, 1)) * se_residual),
+      ci_upper = if_else(untestable, NA_real_, mean_residual + qt(0.975, df = pmax(df, 1)) * se_residual)
     ) |>
+    select(-untestable) |>
     mutate(
       p_adj       = p.adjust(p_value, method = "BH"),
       significant = !is.na(p_adj) & p_adj < alpha
@@ -363,11 +366,30 @@ test_tenure_effect <- function(coach_residuals_tbl,
                  coef = coef_val, se = se_val, p = p_val))
 }
 
-build_coach_residuals <- function(residuals_tbl) {
+build_coach_residuals <- function(residuals_tbl, min_coverage = 80) {
   coaches <- xx_data_cache$coaches
   matches <- xx_data_cache$matches
 
-  purrr::map_df(residuals_tbl$team_season_id, function(team_sid) {
+  coverage <- xx_data_cache$players |>
+    group_by(team_season_id) |>
+    summarize(
+      total_minutes  = sum(minutes_played, na.rm = TRUE),
+      valued_minutes = sum(minutes_played[!is.na(player_market_value_euro)], na.rm = TRUE),
+      pct_covered    = 100 * valued_minutes / total_minutes,
+      .groups        = "drop"
+    )
+
+  residuals_filtered <- residuals_tbl |>
+    left_join(coverage, by = "team_season_id") |>
+    filter(is.na(pct_covered) | pct_covered >= min_coverage)
+
+  n_dropped <- nrow(residuals_tbl) - nrow(residuals_filtered)
+  cat(sprintf(
+    "Coverage filter (>= %d%%): %d team-season(s) dropped, %d retained.\n",
+    min_coverage, n_dropped, nrow(residuals_filtered)
+  ))
+
+  purrr::map_df(residuals_filtered$team_season_id, function(team_sid) {
     meta <- residuals_tbl |> filter(team_season_id == team_sid)
 
     team_matches <- matches |>
@@ -408,4 +430,98 @@ build_coach_residuals <- function(residuals_tbl) {
         predicted_ppg, partial_residual_ppg
       )
   })
+}
+
+# Converts BLUP rankings to a 0-100 numeric score and letter grade.
+# The mean BLUP maps to mean_score (default 75 = C+) and each SD of BLUPs
+# maps to sd_score points (default 10), so the numeric distribution is a
+# bell curve centred at 75. Standard US letter grade cutoffs are applied.
+# Pass m5$mixed$coach_blups as input.
+grade_coaches <- function(coach_blups, mean_score = 75, sd_score = 10) {
+  coach_blups <- dplyr::as_tibble(coach_blups)
+  z_mean <- mean(coach_blups$blup)
+  z_sd   <- sd(coach_blups$blup)
+
+  to_letter <- function(s) {
+    dplyr::case_when(
+      s >= 97 ~ "A+",
+      s >= 93 ~ "A",
+      s >= 90 ~ "A-",
+      s >= 87 ~ "B+",
+      s >= 83 ~ "B",
+      s >= 80 ~ "B-",
+      s >= 77 ~ "C+",
+      s >= 73 ~ "C",
+      s >= 70 ~ "C-",
+      s >= 67 ~ "D+",
+      s >= 63 ~ "D",
+      s >= 60 ~ "D-",
+      TRUE    ~ "F"
+    )
+  }
+
+  result <- coach_blups |>
+    dplyr::mutate(
+      numeric_grade = pmin(100, pmax(0, round(mean_score + ((blup - z_mean) / z_sd) * sd_score, 1))),
+      letter_grade  = to_letter(numeric_grade)
+    ) |>
+    dplyr::arrange(desc(numeric_grade))
+
+  cat("=== Coach Grades (mean =", mean_score, ", SD =", sd_score, ") ===\n")
+  print(result |> dplyr::select(coach_name, n_stints, total_games, n_clubs,
+                                 blup, numeric_grade, letter_grade), n = Inf)
+
+  cat("\n=== Grade Distribution ===\n")
+  dist <- result |>
+    dplyr::count(letter_grade) |>
+    dplyr::mutate(pct = round(100 * n / sum(n), 1)) |>
+    dplyr::arrange(desc(letter_grade))
+  print(dist, n = Inf)
+
+  invisible(result)
+}
+
+# Runs the full Milestone 5 pipeline in order.
+# residuals_tbl should come from run_milestone4() or compute_residuals().
+# min_coverage: drop team-seasons where <X% of minutes have valued players (default 80).
+# min_games / min_stints: thresholds for coach stats and mixed model.
+run_milestone5 <- function(residuals_tbl,
+                           min_coverage = 80,
+                           min_games    = 10,
+                           min_stints   = 3) {
+  sep <- function(title) cat("\n", strrep("=", 60), "\n", title, "\n", strrep("=", 60), "\n\n", sep = "")
+
+  sep("STEP 1: BUILD COACH RESIDUALS")
+  coach_residuals <- build_coach_residuals(residuals_tbl, min_coverage = min_coverage)
+  cat("Stints built:", nrow(coach_residuals), "\n")
+  cat("Unique coaches:", n_distinct(coach_residuals$coach_id), "\n")
+
+  sep("STEP 2: VALIDATE COACH COVERAGE")
+  coverage <- validate_coach_coverage(coach_residuals, residuals_tbl)
+
+  sep("STEP 3: COACH-LEVEL STATISTICS")
+  coach_stats <- compute_coach_stats(coach_residuals, min_games = min_games, min_stints = 1)
+
+  sep("STEP 4: SIGNIFICANCE TESTING")
+  coach_ranked <- add_significance(coach_stats)
+
+  sep("STEP 5: MIXED-EFFECTS MODEL")
+  mixed <- fit_mixed_model(coach_residuals, min_games = min_games, min_stints = min_stints)
+
+  sep("MILESTONE 5 COMPLETE")
+  n_sig <- sum(coach_ranked$significant, na.rm = TRUE)
+  cat("Coaches ranked (min", min_games, "games):", nrow(coach_stats), "\n")
+  cat("Significant after FDR:              ", n_sig, "\n")
+  cat("Coach variance p (LRT):             ", round(mixed$lrt$p, 4), "\n")
+  top1 <- mixed$coach_blups[1, ]
+  cat("Top coach (BLUP):                   ", top1$coach_name,
+      sprintf("(+%.3f PPG, %d stints)\n", top1$blup, top1$n_stints))
+
+  invisible(list(
+    coach_residuals = coach_residuals,
+    coverage        = coverage,
+    coach_stats     = coach_stats,
+    coach_ranked    = coach_ranked,
+    mixed           = mixed
+  ))
 }
