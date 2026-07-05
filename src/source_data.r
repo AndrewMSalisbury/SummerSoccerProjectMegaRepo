@@ -361,6 +361,98 @@ xx_data_coach <- function(team_season_id, force_recrawl = FALSE) {
   xx_data_cache$coaches |> filter_by_team()
 }
 
+# Returns the URL of the coach's profile image scraped from their Transfermarkt
+# page. Returns NA_character_ if the page cannot be fetched or no image is found.
+xx_raw_coach_image_url <- function(coach_id) {
+  cat('## fetching coach image URL for', coach_id, '\n')
+  Sys.sleep(2)
+  page <- xx_fetch_page(coach_id)
+  if (is.null(page)) return(NA_character_)
+  img <- rvest::html_element(page, "img.data-header__profile-image")
+  if (inherits(img, "xml_missing")) {
+    cat('  WARNING: no profile image element found\n')
+    return(NA_character_)
+  }
+  src <- rvest::html_attr(img, "src")
+  if (is.na(src) || nchar(trimws(src)) == 0) return(NA_character_)
+  src
+}
+
+# Downloads profile images for all unique coaches in the coaches cache that
+# have not yet been downloaded. Images are saved to data/images/coaches/ named
+# by the coach's Transfermarkt numeric ID (e.g. 5672.jpg).
+#
+# A lookup table is maintained at data/cache/coach_images.rds with columns:
+#   coach_id   — Transfermarkt profile URL
+#   local_path — relative path to the saved image, or NA if no image was found
+#
+# Coaches already in the lookup (success or confirmed no-image) are skipped.
+# Coaches where the download failed due to a network/HTTP error are not recorded
+# and will be retried on the next call.
+xx_data_populate_coach_images <- function() {
+  images_dir  <- "data/images/coaches"
+  lookup_path <- "data/cache/coach_images.rds"
+  dir.create(images_dir, recursive = TRUE, showWarnings = FALSE)
+
+  if (file.exists(lookup_path)) {
+    lookup <- readRDS(lookup_path)
+  } else {
+    lookup <- data.frame(
+      coach_id   = character(),
+      local_path = character(),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  todo <- xx_data_cache$coaches |>
+    dplyr::distinct(coach_id, coach_name) |>
+    dplyr::filter(!is.na(coach_id), nchar(coach_id) > 0) |>
+    dplyr::filter(!(coach_id %in% lookup$coach_id))
+
+  cat('## downloading images for', nrow(todo), 'coaches\n')
+
+  for (i in seq_len(nrow(todo))) {
+    cid  <- todo$coach_id[i]
+    name <- todo$coach_name[i]
+
+    img_url <- xx_raw_coach_image_url(cid)
+
+    if (is.na(img_url)) {
+      lookup <- rbind(lookup, data.frame(coach_id = cid, local_path = NA_character_, stringsAsFactors = FALSE))
+      saveRDS(lookup, lookup_path)
+      next
+    }
+
+    numeric_id <- stringr::str_extract(cid, "\\d+$")
+    ext        <- tools::file_ext(httr::parse_url(img_url)$path)
+    if (nchar(ext) == 0) ext <- "jpg"
+    local_path <- file.path(images_dir, paste0(numeric_id, ".", ext))
+
+    tryCatch({
+      resp <- httr::GET(
+        img_url,
+        httr::add_headers(
+          `referer`    = "https://www.transfermarkt.com/",
+          `user-agent` = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+          `cookie`     = .TM_COOKIE
+        ),
+        httr::write_disk(local_path, overwrite = TRUE)
+      )
+      if (!httr::http_error(resp)) {
+        cat('  saved:', local_path, '\n')
+        lookup <- rbind(lookup, data.frame(coach_id = cid, local_path = local_path, stringsAsFactors = FALSE))
+        saveRDS(lookup, lookup_path)
+      } else {
+        cat('  HTTP', httr::status_code(resp), 'downloading image for', name, '— will retry next run\n')
+      }
+    }, error = function(e) {
+      cat('  ERROR downloading image for', name, ':', conditionMessage(e), '— will retry next run\n')
+    })
+  }
+
+  invisible(lookup)
+}
+
 # Compute team points given a set of matches.
 xx_team_points <- function(matches) {
   if (nrow(matches) == 0) {
