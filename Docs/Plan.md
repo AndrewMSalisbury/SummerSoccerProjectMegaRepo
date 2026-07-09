@@ -207,10 +207,49 @@ A ranked list of coaches exists with mean residuals, confidence intervals, signi
 
 ---
 
-## Milestone 6: Extensions (Stretch)
-**Target: ~August 10**
+## Milestone 6: Coach/Player-Type Fit
+**Target: ~August 10 | Status: Active**
 
-Further development if time and results from earlier milestones support it. Each extension is self-contained and can be pursued independently.
+Tests whether coaches perform above/below expectation depending on the player types at their disposal, using the M4/M5 residual as the outcome. Pilot scope: Premier League 2015/16–2024/25. Deliverable: descriptive findings with statistical backing.
 
-- **Player Development Score** — measuring coach impact on player transfer value growth season-over-season, adjusted for age and baseline value
-- **Playing Style Analysis** — categorizing coaches by tactical fingerprint using available match statistics
+### Design decisions (July 6)
+
+- **Lagged characteristics:** a player's in-season charts reflect the current coach's system. Player archetypes are defined from *prior* seasons when measuring what a coach had at their disposal.
+- **Low-dimensional archetypes:** the residual signal is small, so players are grouped into a handful of robust archetypes (~6–10), not many fine categories.
+- **Empirical formations:** coach formation tendencies come from per-match lineup data, not a static "preferred formation" label.
+
+### Completed — data foundation (July 6–9)
+
+1. SofaScore data layer (`src/source_sofascore.r`): headless-Chrome scraping, resumable per-season caches. See CLAUDE.md for access method, politeness rules, and schemas. ✓
+2. Pilot scrape: all 10 seasons — 5,356 player-seasons (season stats + heatmaps), 3,800 matches (formations, per-player match stats, shot coordinates; xG from mid-2021/22). Zero failures. ✓
+3. Transfermarkt crosswalk (`src/sofascore_crosswalk.r`): SofaScore ids ↔ TM player URLs, all seasons, 99.2–100% matched. ✓
+4. Pass/dribble coordinate charts (`rating-breakdown` endpoint) located and scoped: only available 2025/26+, reserved as an optional validation layer. ✓
+
+### Remaining steps
+
+**1. Feature engineering (per player-season)**
+- Heatmap shape descriptors: centroid, spread, width/depth balance, zone occupancy shares.
+- Per-90-normalized profiles from season stats: zone-split passing, long balls, crosses, dribbles, ground/aerial duels, defensive actions, touches.
+- Shot profile from shot coordinates: volume, mean distance, central vs wide share, headers.
+- Filter to a minimum-minutes threshold (to be set and documented).
+
+**2. Archetype clustering**
+- Cluster player-seasons (likely per broad position group) into ~6–10 archetypes; method and k to be decided with diagnostics (silhouette, stability across seasons).
+- Face-validity check: known players should land in sensible archetypes.
+
+**3. Squad composition measures**
+- Lag each player's archetype to prior seasons (endogeneity guard).
+- Per coach-season: archetype shares of the squad, minutes-weighted; formation distribution per coach.
+
+**4. Coach-fit analysis**
+- Join squad archetype shares to M4 residuals via the crosswalk and coach tenure data.
+- Test pre-specified interactions (coach × archetype availability) with FDR control; descriptive per-coach findings for coaches with sufficient data.
+
+**5. Optional validation**
+- Scrape 2025/26 `rating-breakdown` (~11k requests) and confirm archetypes from cheap historical features agree with archetypes from true pass coordinates.
+
+**6. Write-up**
+- Add findings to `Docs/Summary_of_Findings.md` with limitations (coverage boundaries, single-league pilot, lagged-archetype survivorship).
+
+### Completed When
+Archetypes are validated and interpretable, squad composition measures are lagged and joined to residuals, the fit analysis is run with documented statistical evidence, and findings are written up.

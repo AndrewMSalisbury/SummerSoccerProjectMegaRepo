@@ -43,9 +43,13 @@ Residuals are linked to the coaches responsible for each team-season. Coaches wi
 
 ---
 
-## Milestone 6: Extensions (Stretch)
-**Target: ~August 10**
+## Milestone 6: Coach/Player-Type Fit
+**Target: ~August 10 | Status: Active — data foundation complete July 9**
 
-Further development pursued if time and results from earlier milestones support it. Possible directions:
-- **Player Development Score** — measuring coach impact on player transfer value growth
-- **Playing Style Analysis** — categorizing coaches by tactical fingerprint
+Direction chosen July 6 (the "Playing Style Analysis" branch): derive player archetypes from SofaScore data (season heatmaps, ~110-field season statistics, per-match statistics, shot coordinates, per-match formations) and test whether coaches systematically over/underperform — per the M4/M5 residual — depending on the player types at their disposal. Deliverable: descriptive findings, each backed by statistical evidence.
+
+Completed: SofaScore data layer, full PL 2015/16–2024/25 pilot scrape (5,356 player-seasons, 3,800 matches, zero failures), Transfermarkt crosswalks for all ten seasons (99.2–100% matched).
+
+Remaining: archetype feature engineering and clustering, lagged squad-composition measures, coach-fit analysis, write-up.
+
+Unchosen direction (dropped for scope): **Player Development Score** — coach impact on player transfer value growth.
