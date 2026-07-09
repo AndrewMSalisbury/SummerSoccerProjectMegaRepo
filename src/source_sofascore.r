@@ -42,6 +42,10 @@ library(jsonlite)
 # --- constants ---------------------------------------------------------------
 
 ss_ut_PREMIER_LEAGUE <- 17
+ss_ut_LA_LIGA        <- 8
+ss_ut_SERIE_A        <- 23
+ss_ut_BUNDESLIGA     <- 35
+ss_ut_LIGUE_1        <- 34
 
 # SofaScore season ids for the Premier League, keyed by season start year
 # (same convention as season_start_year in leagues.rds).
@@ -57,6 +61,39 @@ ss_pl_season_ids <- c(
   "2023" = 52186,
   "2024" = 61627
 )
+
+# Season ids for the other big-5 leagues, discovered from the
+# /unique-tournament/{ut}/seasons endpoint on 2026-07-09 and smoke-tested
+# (2015/16 season statistics confirmed present for all four).
+ss_big5_leagues <- list(
+  premier_league = list(ut = ss_ut_PREMIER_LEAGUE, seasons = ss_pl_season_ids),
+  la_liga = list(ut = ss_ut_LA_LIGA, seasons = c(
+    "2015" = 10495, "2016" = 11906, "2017" = 13662, "2018" = 18020,
+    "2019" = 24127, "2020" = 32501, "2021" = 37223, "2022" = 42409,
+    "2023" = 52376, "2024" = 61643
+  )),
+  serie_a = list(ut = ss_ut_SERIE_A, seasons = c(
+    "2015" = 10596, "2016" = 11966, "2017" = 13768, "2018" = 17932,
+    "2019" = 24644, "2020" = 32523, "2021" = 37475, "2022" = 42415,
+    "2023" = 52760, "2024" = 63515
+  )),
+  bundesliga = list(ut = ss_ut_BUNDESLIGA, seasons = c(
+    "2015" = 10419, "2016" = 11818, "2017" = 13477, "2018" = 17597,
+    "2019" = 23538, "2020" = 28210, "2021" = 37166, "2022" = 42268,
+    "2023" = 52608, "2024" = 63516
+  )),
+  ligue_1 = list(ut = ss_ut_LIGUE_1, seasons = c(
+    "2015" = 10373, "2016" = 11648, "2017" = 13384, "2018" = 17279,
+    "2019" = 23872, "2020" = 28222, "2021" = 37167, "2022" = 42273,
+    "2023" = 52571, "2024" = 61736
+  ))
+)
+
+# All big-5 season ids as one named vector ("league.year" = season_ss_id),
+# for the combined accessors below.
+ss_big5_season_ids <- function(leagues = ss_big5_leagues) {
+  unlist(lapply(leagues, function(l) l$seasons))
+}
 
 ss_cache_dir <- "data/cache/sofascore"
 
@@ -82,11 +119,13 @@ ss_browser <- function() {
 #            limit — retried on the next populate run)
 #   data   — the parsed JSON (lists, not simplified) when status == "ok"
 #
-# Politeness: sleeps 4-7s with jitter before every request and rests 90s
+# Politeness: sleeps 2-3s with jitter before every request and rests 90s
 # after every 250 requests. On a 403/429 it backs off for 10 minutes —
 # SofaScore rate-limits by IP and the block clears after a pause.
-# (2-3.5s was never punished in testing, but the one IP block we did trigger
-# cost ~24h, so the pilot runs deferentially. Never remove these delays.)
+# (The PL pilot ran at 4-7s; lowered to 2-3s for the big-5 expansion on
+# Andrew's decision 2026-07-09 — steady 2-3.5s was never punished in testing,
+# the one IP block came from a 70-request burst. Never remove these delays;
+# if a run starts hitting 403s, put the pacing back up before resuming.)
 ss_fetch_json <- function(url) {
   n <- (if (is.null(ss_env$request_count)) 0 else ss_env$request_count) + 1
   ss_env$request_count <- n
@@ -94,7 +133,7 @@ ss_fetch_json <- function(url) {
     message("  [", n, " requests this session — resting 90s]")
     Sys.sleep(90)
   }
-  Sys.sleep(runif(1, 4, 7))
+  Sys.sleep(runif(1, 2, 3))
   txt <- tryCatch({
     b <- ss_browser()
     loaded <- b$Page$loadEventFired(wait_ = FALSE)
@@ -539,6 +578,22 @@ ss_data_populate_pl_pilot <- function(start_years = names(ss_pl_season_ids)) {
   for (yr in start_years) {
     ss_data_populate_player_season(ss_ut_PREMIER_LEAGUE, ss_pl_season_ids[[yr]])
     ss_data_populate_match_season(ss_ut_PREMIER_LEAGUE, ss_pl_season_ids[[yr]])
+  }
+}
+
+# Big-5 expansion: every league-season in ss_big5_leagues, same two layers as
+# the pilot. Seasons already fully scraped (the PL) are skipped by the resume
+# logic at negligible cost. ~70k new requests at 2-3s pacing — roughly 55
+# hours end to end; run overnight in stages, interrupt and re-run freely.
+ss_data_populate_big5 <- function(leagues = ss_big5_leagues,
+                                  start_years = names(ss_pl_season_ids)) {
+  for (league_name in names(leagues)) {
+    league <- leagues[[league_name]]
+    for (yr in start_years) {
+      message("=== ", league_name, " ", yr, " ===")
+      ss_data_populate_player_season(league$ut, league$seasons[[yr]])
+      ss_data_populate_match_season(league$ut, league$seasons[[yr]])
+    }
   }
 }
 

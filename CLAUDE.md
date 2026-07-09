@@ -43,29 +43,31 @@ The in-memory cache (`xx_data_cache`) is a named list initialized by `xx_init_da
 
 **IDs throughout the project are Transfermarkt URLs**, not opaque integers. A `league_season_id` is a full URL like `https://www.transfermarkt.com/premier-league/startseite/wettbewerb/GB1/plus/?saison_id=2024`. A `team_season_id` is a team's Transfermarkt page URL for a specific season. A `player_id` is a player's Transfermarkt profile URL. This means joins between tables use URL string matching.
 
-Twenty league constants are declared (`xx_league_id_PREMIER_LEAGUE`, `xx_league_id_PRO_LEAGUE`, etc.), but `xx_all_leagues()` returns only 15 — five were excluded for data quality reasons:
+Twenty league constants are declared (`xx_league_id_PREMIER_LEAGUE`, `xx_league_id_PRO_LEAGUE`, etc.), but `xx_all_leagues()` returns only 14 — six were excluded for data quality reasons:
 
 - **Argentine Liga Profesional** (`AR1N`): Transfermarkt ignores `saison_id` for this league and returns 2024 squad data for every historical season (confirmed corruption).
 - **J1 League** (`JAP1`): missing match cache for 2014–2015, sparse market value data in early seasons.
 - **Liga MX** (`MEX1`): captures only one tournament (Clausura) per season, not a full-season equivalent.
 - **Brazilian Série A** (`BRA1`) and **MLS** (`MLS1`): minutes-weighted metric actively hurts predictions — multi-competition squad rotation (Brazil) and salary cap roster construction (MLS) break the assumption that league minutes reflect squad deployment.
+- **Allsvenskan** (`SE1`): market value coverage catastrophically sparse in early seasons (23.6% of minutes valued in 2005) and never exceeds ~94% even in modern seasons — the metric is unreliable across the full time span.
 
-The 15 active leagues are: Premier League, La Liga, Ligue 1, Serie A, Bundesliga, Championship, Liga Portugal, Jupiler Pro League, Eredivisie, Danish Superliga, Ekstraklasa, Allsvenskan, HNL, Süper Lig, LaLiga 2. League-season URLs are constructed directly from the base constant (`paste0(league_id, "/plus/?saison_id=", year)`) and do not depend on the worldfootballR CSV.
+The 14 active leagues are: Premier League, La Liga, Ligue 1, Serie A, Bundesliga, Championship, Liga Portugal, Jupiler Pro League, Eredivisie, Danish Superliga, Ekstraklasa, HNL, Süper Lig, LaLiga 2. League-season URLs are constructed directly from the base constant (`paste0(league_id, "/plus/?saison_id=", year)`) and do not depend on the worldfootballR CSV.
 
 ### SofaScore Data Layer (`src/source_sofascore.r`, `src/sofascore_crosswalk.r`)
 
-Added for the Milestone 6 coach/player-type fit analysis. Functions use the `ss_` prefix with the same two tiers as `source_data.r`: `ss_raw_*` scrapes, `ss_data_*` reads the RDS cache first. Caches live in `data/cache/sofascore/`, one file per SofaScore season id (the PL 2015/16–2024/25 ids are in `ss_pl_season_ids`).
+Added for the Milestone 6 coach/player-type fit analysis. Functions use the `ss_` prefix with the same two tiers as `source_data.r`: `ss_raw_*` scrapes, `ss_data_*` reads the RDS cache first. Caches live in `data/cache/sofascore/`, one file per SofaScore season id (the PL 2015/16–2024/25 ids are in `ss_pl_season_ids`; all big-5 league ids are in `ss_big5_leagues`).
 
-**SofaScore rejects plain HTTP clients by TLS fingerprint** (R httr/curl get HTTP 403 regardless of headers), so every request goes through headless Chrome via `{chromote}` — Chrome must be installed. **Politeness is mandatory:** 4–7s jittered sleep per request, 90s rest every 250 requests, 10-minute backoff on 403/429, abort after 3 consecutive failures with progress saved (fully resumable). A one-off ~70-request burst once earned a ~24-hour IP block; steady pacing has never been blocked. Never remove these delays. Only HTTP 404 is recorded as permanently missing; other failures are retried on the next populate run.
+**SofaScore rejects plain HTTP clients by TLS fingerprint** (R httr/curl get HTTP 403 regardless of headers), so every request goes through headless Chrome via `{chromote}` — Chrome must be installed. **Politeness is mandatory:** 2–3s jittered sleep per request (lowered from the pilot's 4–7s on 2026-07-09 for the big-5 expansion; steady 2–3.5s was never punished in testing), 90s rest every 250 requests, 10-minute backoff on 403/429, abort after 3 consecutive failures with progress saved (fully resumable). A one-off ~70-request burst once earned a ~24-hour IP block; steady pacing has never been blocked. Never remove these delays; if a run starts hitting 403s, raise the pacing back to 4–7s before resuming. Only HTTP 404 is recorded as permanently missing; other failures are retried on the next populate run.
 
 SofaScore ids are opaque integers, not URLs — columns holding them are suffixed `_ss_id`. `ss_build_crosswalk(season_ss_id, league_season_id)` in `sofascore_crosswalk.r` links SofaScore player ids to Transfermarkt `player_id` URLs (99.2–100% matched on the pilot; unmatched rows are youth players absent from TM squad pages).
 
 Data coverage limits (verified): per-match player statistics, formations, and shot coordinates go back to 2015/16; **xG exists from mid-2021/22** (complete from 2022/23); per-pass/dribble coordinate charts (`ss_raw_player_event_breakdown()`, the `rating-breakdown` endpoint) exist **only from 2025/26** and are not part of the pilot dataset.
 
-To run or resume the pilot scrape (idempotent, resumes wherever it stopped):
+To run or resume a scrape (idempotent, resumes wherever it stopped):
 ```r
 source("source_sofascore.r")
-ss_data_populate_pl_pilot()
+ss_data_populate_pl_pilot()   # PL only (complete)
+ss_data_populate_big5()       # all big-5 leagues 2015/16-2024/25 (in progress since 2026-07-09)
 ```
 
 ### Analysis Layer (`src/tabler.R`)
@@ -77,6 +79,17 @@ Builds on the data layer to produce per-team metrics and model comparisons:
 - `all_correlations()` — iterates over all leagues × seasons and aggregates correlation results.
 
 The `weighted_team_value` formula: for each player, `player_market_value_euro × percent_minutes_played`, summed per team. When a team has no minutes data (weighted value = 0), the value is imputed from a within-season regression against `total_team_value`.
+
+Later milestones build on this in a source chain — `coach_attribution.R` → `residual_analysis.R` → `model_comparison.R` → `tabler.R` (with `source_data.r` sourced manually first): `model_comparison.R` (M3, `run_milestone3()`), `residual_analysis.R` (M4, `run_milestone4()`), `coach_attribution.R` (M5, `run_milestone5()`), `augmented_model.R` (coach BLUP CV).
+
+### M6 Archetype Layer (`src/player_archetypes.R`, `src/coach_fit.R`)
+
+The Milestone 6 coach/player-type fit analysis. Pure cache-readers (no scraping, no chromote):
+
+- `player_archetypes.R` (`pa_` prefix) — per-player-season style features from the SofaScore caches and k-means archetype clustering within D/M/F position groups (11 archetypes, labels in `pa_archetype_labels`). `run_archetypes()` rebuilds `data/cache/sofascore/archetypes.rds`. Features are style-only (no goals/ratings/xG) and z-scored within season × position group.
+- `coach_fit.R` (`cf_` prefix) — lagged archetype assignment (current-season fallback for players new to the PL, flagged), minutes-weighted archetype shares per coach stint, join to M5 partial residuals, global mixed model + per-coach tests + strict-lagged sensitivity. `cf_run_analysis()` runs everything; sources `coach_attribution.R`, `player_archetypes.R`, `sofascore_crosswalk.r`.
+
+Data conventions that will bite if forgotten: SofaScore **shot coordinates put the attacked goal at (0, 50)** (heatmaps attack toward x = 100); **`match_stats$team_ss_id` is the player's club at scrape time, not the match team** — derive the match side from `is_home` + the event's home/away ids; season stat fields `outfielderBlocks`/`ballRecovery` exist only from 2023/24 and must not be used as features.
 
 ## Data Schemas
 
@@ -102,11 +115,13 @@ SofaScore caches (`data/cache/sofascore/`, one file per season id, populated for
 | `shots_<sid>.rds` | `event_ss_id`, `player_ss_id`, `x`, `y`, `xg`, `body_part`, `situation`, `shot_type` |
 | `crosswalk_<sid>.rds` | `player_ss_id` ↔ `player_id` (TM URL), `method` |
 | `status_<sid>.rds`, `match_status_<sid>.rds` | scrape bookkeeping — do not edit |
+| `archetypes.rds` | `player_ss_id`, `season_start_year`, `position_group`, `archetype`, `archetype_label` (all seasons in one file; rebuilt by `run_archetypes()`) |
 
 ## Conventions
 
 - All functions in `source_data.r` use the `xx_` prefix. Raw scrapers use `xx_raw_`, cached accessors use `xx_data_`, and helper/utility functions use `xx_`.
 - SofaScore functions (`source_sofascore.r`, `sofascore_crosswalk.r`) use the `ss_` prefix with the same raw/data tier split.
+- M6 analysis functions use the `pa_` prefix (`player_archetypes.R`) and `cf_` prefix (`coach_fit.R`).
 - Use the native pipe `|>` rather than `%>%` in new code (existing code mixes both).
 - 2-space indentation (set in `.Rproj`).
 - `src/workpad.r` is a scratch file for exploration — do not treat it as authoritative.

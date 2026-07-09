@@ -43,13 +43,15 @@ Residuals are linked to the coaches responsible for each team-season. Coaches wi
 
 ---
 
-## Milestone 6: Coach/Player-Type Fit
-**Target: ~August 10 | Status: Active — data foundation complete July 9**
+## Milestone 6: Coach/Player-Type Fit ✓
+**Completed: July 9, 2026 (optional pass-coordinate validation outstanding)**
 
-Direction chosen July 6 (the "Playing Style Analysis" branch): derive player archetypes from SofaScore data (season heatmaps, ~110-field season statistics, per-match statistics, shot coordinates, per-match formations) and test whether coaches systematically over/underperform — per the M4/M5 residual — depending on the player types at their disposal. Deliverable: descriptive findings, each backed by statistical evidence.
+Direction chosen July 6 (the "Playing Style Analysis" branch): derive player archetypes from SofaScore data and test whether coaches systematically over/underperform — per the M4/M5 residual — depending on the player types at their disposal.
 
-Completed: SofaScore data layer, full PL 2015/16–2024/25 pilot scrape (5,356 player-seasons, 3,800 matches, zero failures), Transfermarkt crosswalks for all ten seasons (99.2–100% matched).
+Delivered: 11 face-valid player archetypes from 3,476 PL player-seasons (38 style features, k-means within position groups); lagged minutes-weighted squad composition per coach stint (301 stints, 100% joined to M5 residuals). **Headline finding: squad archetype mix predicts performance above squad-value expectation (LRT p = 0.013; strict-lagged sensitivity p = 0.0017), led by wide-creator share.** Per-coach fits are descriptive only (0/280 survive FDR; Klopp + pressing forwards and Guardiola/Arteta + ball-playing CBs recur across specifications). Full pipeline: `src/player_archetypes.R`, `src/coach_fit.R`; findings in `Docs/Summary_of_Findings.md` Part 6.
 
-Remaining: archetype feature engineering and clustering, lagged squad-composition measures, coach-fit analysis, write-up.
+Optional remaining: 2025/26 pass-coordinate validation (~11k requests).
+
+Unchosen direction (dropped for scope): **Player Development Score** — coach impact on player transfer value growth.
 
 Unchosen direction (dropped for scope): **Player Development Score** — coach impact on player transfer value growth.
