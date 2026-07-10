@@ -91,6 +91,12 @@ se_load <- function() {
     )
 
   d$cr <- d$cr |>
+    # build_coach_residuals() duplicates a stint row when a coach had two
+    # tenure brackets in the same team-season (sacked and re-appointed) —
+    # same dedupe rule as cf_build_analysis_table(): keep the earliest
+    group_by(team_season_id, coach_id) |>
+    slice_min(date_from, n = 1, with_ties = FALSE) |>
+    ungroup() |>
     mutate(
       coach_num = se_coach_num(coach_id),
       club_id   = gsub("/saison_id/\\d+$", "", team_season_id),

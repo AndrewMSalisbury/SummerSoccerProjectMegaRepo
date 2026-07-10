@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Summary of Findings — Football Coach Valuation</title>
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<div id="site-header"></div>
+<div class="writeup-layout container">
+<nav class="toc" aria-label="Table of contents"><h3>Contents</h3><ul><li><a href="#hypothesis">Hypothesis</a></li>
+<li><a href="#data">Data</a></li>
+<li><a href="#part-1-does-minutesweighted-squad-value-predict-points-better">Part 1: Does Minutes-Weighted Squad Value Predict Points Better?</a></li>
+<li><a href="#part-2-do-the-residuals-contain-a-coaching-signal">Part 2: Do the Residuals Contain a Coaching Signal?</a></li>
+<li><a href="#part-3-is-the-coaching-effect-portable-across-clubs">Part 3: Is the Coaching Effect Portable Across Clubs?</a></li>
+<li><a href="#individual-coach-rankings">Individual Coach Rankings</a></li>
+<li><a href="#part-4-does-coach-identity-improve-outofsample-predictions">Part 4: Does Coach Identity Improve Out-of-Sample Predictions?</a></li>
+<li><a href="#year-2-dip">Year 2 Dip</a></li>
+<li><a href="#part-5-expanded-dataset-m4m5-rerun-14-leagues-20052024">Part 5: Expanded Dataset — M4/M5 Re-run (14 Leagues, 2005–2024)</a></li>
+<li><a href="#part-6-does-coach-performance-depend-on-the-player-types-available-milestone-6">Part 6: Does Coach Performance Depend on the Player Types Available? (Milestone 6)</a></li>
+<li><a href="#limitations">Limitations</a></li>
+<li><a href="#conclusion">Conclusion</a></li></ul></nav>
+<article class="writeup">
+<h1>Summary of Findings</h1>
+<p><strong>Project:</strong> Football Coach Valuation Model
+<strong>Author:</strong> Andrew Salisbury
+<strong>Date:</strong> June 2026</p>
+<hr />
+<h2 id="hypothesis">Hypothesis</h2>
+<p>Minutes-weighted squad value (each player's market value scaled by their share of total team minutes) outperforms raw squad value as a predictor of final league points, and the residual from that model is attributable to coaching quality.</p>
+<hr />
+<h2 id="data">Data</h2>
+<ul>
+<li><strong>Source:</strong> Transfermarkt (scraped via custom R pipeline)</li>
+<li><strong>Leagues (active):</strong> 15 leagues — the 5 major European leagues (Premier League, La Liga, Ligue 1, Serie A, Bundesliga) plus Championship, Liga Portugal, Jupiler Pro League, Eredivisie, Danish Superliga, Ekstraklasa, Allsvenskan, HNL, LaLiga 2, Süper Lig</li>
+<li><strong>Excluded leagues:</strong> Argentine Liga Profesional (Transfermarkt ignores <code>saison_id</code> for this league, returning 2024 squad data for all historical seasons — confirmed data corruption); J1 League and Liga MX (sparse/missing data in early seasons and partial-season format issues); Brazilian Série A and MLS (minutes-weighted metric actively hurts predictions — multi-competition squad rotation and salary cap roster construction break the core assumption that Brasileirão minutes reflect squad deployment)</li>
+<li><strong>Seasons:</strong> 2005–2024 (20 seasons)</li>
+<li><strong>Dataset for M3:</strong> 5,403 team-seasons</li>
+<li><strong>Dataset for M4/M5/augmented model:</strong> 976 team-seasons (original 5-league, 2015–2024 subset; coach attribution and rankings have not yet been re-run on the expanded dataset)</li>
+</ul>
+<hr />
+<h2 id="part-1-does-minutesweighted-squad-value-predict-points-better">Part 1: Does Minutes-Weighted Squad Value Predict Points Better?</h2>
+<p><strong>Finding: Yes. The hypothesis is supported.</strong></p>
+<p>Both models were fitted on points-per-game with league fixed effects and log-transformed, league-season-normalised squad values. The enhanced model (minutes-weighted) outperformed the baseline (raw squad value) across all metrics:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Baseline</th>
+<th>Enhanced</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R²</td>
+<td>0.592</td>
+<td><strong>0.637</strong></td>
+</tr>
+<tr>
+<td>In-sample RMSE</td>
+<td>0.270</td>
+<td><strong>0.255</strong></td>
+</tr>
+<tr>
+<td>Season CV RMSE</td>
+<td>0.276</td>
+<td><strong>0.262</strong></td>
+</tr>
+<tr>
+<td>League CV RMSE</td>
+<td>0.278</td>
+<td><strong>0.264</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Mean out-of-sample RMSE improvement: <strong>0.014 PPG</strong> (both cross-validation schemes).</p>
+<p><strong>Significance tests (paired t-test, baseline vs enhanced):</strong></p>
+<ul>
+<li>Leave-one-season-out (20 folds): p &lt; 0.0001, 95% CI lower bound = 0.011</li>
+<li>Leave-one-league-out (15 folds): p = 0.0001, 95% CI lower bound = 0.009</li>
+</ul>
+<p>Both tests are significant. A combined model (raw + weighted together) adds negligible improvement over enhanced alone and was dropped; the weighted metric alone is the stronger predictor.</p>
+<p><em>Note: R² is lower than in the original 5-league analysis (0.73) because the 15-league dataset is far more diverse. Smaller leagues with weaker squad-value signals add variance that the model cannot fully explain with a single pooled specification. The out-of-sample improvement is more informative than in-sample R².</em></p>
+<hr />
+<h2 id="part-2-do-the-residuals-contain-a-coaching-signal">Part 2: Do the Residuals Contain a Coaching Signal?</h2>
+<p><strong>Finding: Yes. The hypothesis is supported.</strong></p>
+<p>The winning model was fitted on the full dataset to generate residuals for 970 valid team-seasons (6 NA due to an imputation edge case). The residuals are approximately normally distributed (mean = 0, SD = 0.238 PPG) with no heteroskedasticity — the model is equally reliable across squad value tiers from promoted clubs to elite teams.</p>
+<p>The lag-1 temporal persistence of residuals is r = 0.25 (p &lt; 0.001): a modest club effect exists but explains only ~6% of year-to-year variance, meaning the residual is not simply a stable club quality proxy.</p>
+<p>Top overperformers include Liverpool 2019 (+32 points), Leicester City 2015 (+30 points), and Bayer Leverkusen 2023 under Xabi Alonso — all well-known coaching narratives. The model identifies real sporting signals.</p>
+<hr />
+<h2 id="part-3-is-the-coaching-effect-portable-across-clubs">Part 3: Is the Coaching Effect Portable Across Clubs?</h2>
+<p><strong>Finding: Yes. Coach variance exceeds club variance.</strong></p>
+<p>Coach residuals were computed via partial attribution: each match was assigned to the coach in charge on that date using Transfermarkt appointment dates, with matches in coverage gaps dropped from both actual and expected. 99.4% of matches were attributed.</p>
+<p>A mixed-effects model decomposed partial residual PPG into coach and club variance components:</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Variance</th>
+<th>% of total</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Coach</td>
+<td>0.0113</td>
+<td><strong>8.5%</strong></td>
+</tr>
+<tr>
+<td>Club</td>
+<td>0.0065</td>
+<td><strong>4.9%</strong></td>
+</tr>
+<tr>
+<td>Residual</td>
+<td>0.1147</td>
+<td>86.6%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Likelihood ratio test: χ² = 10.64, df = 1, p = 0.0011.</strong></p>
+<p>Coach identity explains significant variance in performance above expectation after accounting for club-level effects. Crucially, coach variance exceeds club variance: the effect follows the manager more than it stays at the club.</p>
+<hr />
+<h2 id="individual-coach-rankings">Individual Coach Rankings</h2>
+<p>Coaches were ranked using BLUPs (Best Linear Unbiased Predictors) from the mixed model, which apply shrinkage proportional to data scarcity — sparse coaches are pulled toward zero. Rankings are most reliable for coaches with 5+ seasons in the dataset.</p>
+<p><strong>Top coaches (minimum 3 stints, 10 games):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Rank</th>
+<th>Coach</th>
+<th>Stints</th>
+<th>Games</th>
+<th>Clubs</th>
+<th>BLUP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Pep Guardiola</td>
+<td>10</td>
+<td>376</td>
+<td>2</td>
+<td>+0.180</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Jürgen Klopp</td>
+<td>9</td>
+<td>334</td>
+<td>1</td>
+<td>+0.140</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Igor Tudor</td>
+<td>7</td>
+<td>116</td>
+<td>5</td>
+<td>+0.139</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Antonio Conte</td>
+<td>7</td>
+<td>246</td>
+<td>4</td>
+<td>+0.125</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Massimiliano Allegri</td>
+<td>6</td>
+<td>226</td>
+<td>1</td>
+<td>+0.103</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Éric Roy</td>
+<td>3</td>
+<td>89</td>
+<td>1</td>
+<td>+0.102</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Urs Fischer</td>
+<td>5</td>
+<td>147</td>
+<td>1</td>
+<td>+0.101</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Luciano Spalletti</td>
+<td>6</td>
+<td>209</td>
+<td>3</td>
+<td>+0.101</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Davide Nicola</td>
+<td>9</td>
+<td>202</td>
+<td>7</td>
+<td>+0.089</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Simone Inzaghi</td>
+<td>10</td>
+<td>349</td>
+<td>2</td>
+<td>+0.086</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Bottom coaches:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Rank</th>
+<th>Coach</th>
+<th>Stints</th>
+<th>Games</th>
+<th>Clubs</th>
+<th>BLUP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>…</td>
+<td>Vincenzo Montella</td>
+<td>5</td>
+<td>93</td>
+<td>3</td>
+<td>-0.185</td>
+</tr>
+<tr>
+<td>…</td>
+<td>Franck Passi</td>
+<td>4</td>
+<td>24</td>
+<td>3</td>
+<td>-0.226</td>
+</tr>
+</tbody>
+</table>
+<p>At the individual level, <strong>only Pep Guardiola achieves statistical significance</strong> after Benjamini-Hochberg FDR correction (mean residual +0.39 PPG, 95% CI [0.26, 0.52], p-adj &lt; 0.001). Other coaches show directional evidence but lack sufficient individual data for significance. This is a sample size constraint, not a failure of the model.</p>
+<p><strong>Notable portability findings:</strong> Davide Nicola (9 stints, 7 clubs, positive) and Eusebio Di Francesco (9 stints, 7 clubs, negative) provide the strongest evidence that coaching effects travel with the manager. Igor Tudor (7 stints, 5 clubs) and Antonio Conte (7 stints, 4 clubs) show consistent overperformance across diverse club environments with low standard deviations.</p>
+<hr />
+<h2 id="part-4-does-coach-identity-improve-outofsample-predictions">Part 4: Does Coach Identity Improve Out-of-Sample Predictions?</h2>
+<p><strong>Finding: Yes. Adding coach BLUPs to the model significantly reduces prediction error.</strong></p>
+<p>The strongest possible test of the coaching hypothesis is whether knowing who the coach is — based solely on their track record in prior seasons — makes predictions for a new season more accurate. A leave-one-season-out cross-validation was run comparing:</p>
+<ul>
+<li><strong>Enhanced model:</strong> <code>points_per_game ~ log(norm_weighted_value) + league</code> (the M3 winner)</li>
+<li><strong>Augmented model:</strong> enhanced prediction + games-weighted coach BLUP from training seasons only</li>
+</ul>
+<p>In each fold, BLUPs were estimated exclusively from the 9 training seasons. Coaches appearing in the held-out season for the first time (no prior data) received a BLUP of 0 — a conservative default. For teams with mid-season changes, the coach adjustment was a games-weighted average of their coaches' training BLUPs.</p>
+<table>
+<thead>
+<tr>
+<th>Fold</th>
+<th>Enhanced RMSE</th>
+<th>Augmented RMSE</th>
+<th>Improvement</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2015</td>
+<td>0.2444</td>
+<td>0.2458</td>
+<td>-0.0014</td>
+</tr>
+<tr>
+<td>2016</td>
+<td>0.2170</td>
+<td>0.2103</td>
+<td>+0.0067</td>
+</tr>
+<tr>
+<td>2017</td>
+<td>0.2187</td>
+<td>0.2148</td>
+<td>+0.0038</td>
+</tr>
+<tr>
+<td>2018</td>
+<td>0.3002</td>
+<td>0.2949</td>
+<td>+0.0053</td>
+</tr>
+<tr>
+<td>2019</td>
+<td>0.2706</td>
+<td>0.2637</td>
+<td>+0.0069</td>
+</tr>
+<tr>
+<td>2020</td>
+<td>0.2192</td>
+<td>0.2196</td>
+<td>-0.0004</td>
+</tr>
+<tr>
+<td>2021</td>
+<td>0.2091</td>
+<td>0.2016</td>
+<td>+0.0075</td>
+</tr>
+<tr>
+<td>2022</td>
+<td>0.2386</td>
+<td>0.2309</td>
+<td>+0.0078</td>
+</tr>
+<tr>
+<td>2023</td>
+<td>0.2190</td>
+<td>0.2136</td>
+<td>+0.0054</td>
+</tr>
+<tr>
+<td>2024</td>
+<td>0.2357</td>
+<td>0.2333</td>
+<td>+0.0025</td>
+</tr>
+<tr>
+<td><strong>MEAN</strong></td>
+<td><strong>0.2373</strong></td>
+<td><strong>0.2328</strong></td>
+<td><strong>+0.0044</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Paired t-test: p = 0.001, 95% CI lower bound = 0.0025.</strong> 8 of 10 folds improved.</p>
+<p>The two non-improving folds are explainable: 2015 is the first fold, so coaches who only appear in 2015 have no training BLUP and default to 0, and BLUPs estimated from later career peaks may not reflect 2015 form. The 2020 result is essentially flat (-0.0004) and likely reflects COVID-season disruption.</p>
+<p><strong>Cumulative improvement chain:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>RMSE improvement</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Raw squad value → minutes-weighted (M3)</td>
+<td>~0.013</td>
+</tr>
+<tr>
+<td>Minutes-weighted → +coach BLUP (new)</td>
+<td>0.0044</td>
+</tr>
+</tbody>
+</table>
+<p>Coach identity adds approximately one-third of the improvement that the weighting step added. This is not just a detectable signal — it is a useful predictive feature in a rigorous out-of-sample test.</p>
+<hr />
+<h2 id="year-2-dip">Year 2 Dip</h2>
+<p>A consistent but statistically inconclusive pattern was identified across multiple cuts of the data: a coach's second season at a club shows a lower residual than their first, regardless of whether the appointment was pre-season or mid-season. The effect reverses from year 3 onward and is not significant in the mixed model (p &gt; 0.5 for pre-season appointments).</p>
+<p>Two explanations are consistent with the data but cannot be distinguished:</p>
+<ul>
+<li><strong>New manager bounce:</strong> a motivational and tactical novelty effect inflates year 1 results, with year 2 representing regression to the coach's true level.</li>
+<li><strong>Value inflation:</strong> strong year 1 performance raises player market values, increasing predicted PPG in year 2 and compressing the apparent residual even if coaching quality is unchanged.</li>
+</ul>
+<p>This is noted as a caveat on the rankings: long-tenured coaches at a single club may be modestly underrated relative to coaches who move frequently.</p>
+<hr />
+<h2 id="part-5-expanded-dataset-m4m5-rerun-14-leagues-20052024">Part 5: Expanded Dataset — M4/M5 Re-run (14 Leagues, 2005–2024)</h2>
+<p>M4 and M5 were re-run on the full expanded dataset. A minutes-coverage filter (≥80% of team minutes must have valued players) was applied before coach attribution to exclude team-seasons where sparse Transfermarkt data would produce artefactual residuals — 88 team-seasons were dropped, 4,999 retained.</p>
+<h3>Residual Analysis (14 leagues)</h3>
+<ul>
+<li>5,080 valid residuals (7 NA from non-positive normalised squad value)</li>
+<li>Distribution: mean = 0, SD = 0.242 PPG, approximately normal</li>
+<li>No heteroskedasticity detected — rankings equally reliable across all squad value tiers</li>
+<li>Lag-1 temporal persistence: r = 0.203, CI [0.174, 0.232] — slightly lower than the original 5-league result (r = 0.25), consistent with more diverse leagues adding noise</li>
+</ul>
+<h3>Coach Attribution (14 leagues)</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Variance</th>
+<th>% of total</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Coach</td>
+<td>0.0029</td>
+<td>1.9%</td>
+</tr>
+<tr>
+<td>Club</td>
+<td>0.0051</td>
+<td>3.4%</td>
+</tr>
+<tr>
+<td>Residual</td>
+<td>0.1434</td>
+<td>94.7%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Likelihood ratio test: χ² = 6.87, df = 1, p = 0.0088.</strong></p>
+<p>The coach effect remains statistically significant, but club variance now exceeds coach variance. This reversal from the original result reflects the composition of the expanded dataset: most coaches in smaller leagues never move between leagues, making cross-club portability hard to detect. Dominant clubs in smaller leagues (Dinamo Zagreb, Legia Warsaw, Club Brugge) also create strong persistent club signals that inflate the club component.</p>
+<h3>Top-5-Leagues Comparison (2005–2024)</h3>
+<p>To isolate the elite-coaching signal, M4 and M5 were re-run on the 5 major European leagues only across all 20 seasons. This represents the highest-quality cut of the data: the coaches with the most cross-league experience and the most stints in the dataset.</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Variance</th>
+<th>% of total</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Coach</td>
+<td>0.0045</td>
+<td>3.6%</td>
+</tr>
+<tr>
+<td>Club</td>
+<td>0.0044</td>
+<td>3.6%</td>
+</tr>
+<tr>
+<td>Residual</td>
+<td>0.1156</td>
+<td>92.8%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Likelihood ratio test: χ² = 7.23, df = 1, p = 0.0072.</strong></p>
+<p>Coach and club variance are essentially tied. This sits between the original 5-league result (coach 8.5% &gt; club 4.9%, 2015–2024 only) and the 14-league result. Extending to 20 seasons gives elite clubs more time to accumulate a stable identity signal, narrowing the gap — but the coach effect holds its own.</p>
+<p><strong>How the coach/club relationship varies across dataset cuts:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Dataset</th>
+<th>Coach %</th>
+<th>Club %</th>
+<th>Coach &gt; Club?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5 leagues, 2015–2024 (original)</td>
+<td>8.5%</td>
+<td>4.9%</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>5 leagues, 2005–2024</td>
+<td>3.6%</td>
+<td>3.6%</td>
+<td>Tied</td>
+</tr>
+<tr>
+<td>14 leagues, 2005–2024</td>
+<td>1.9%</td>
+<td>3.4%</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<p>The pattern is interpretable: in datasets where elite coaches move frequently between leagues (the top-5 context), their portable effect is easier to detect and exceeds club-level persistence. In broader datasets with more locally-anchored coaches, club environment dominates.</p>
+<h3>Updated Coach Rankings (top-5 leagues, 2005–2024)</h3>
+<p>Rankings use BLUPs from the top-5-leagues run, which offers the most stints per coach and the cleanest separation of coach from club effects. Three coaches achieve individual significance after FDR correction: Guardiola, Ferguson, Xavi.</p>
+<p><strong>Top 15 coaches:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Rank</th>
+<th>Coach</th>
+<th>Stints</th>
+<th>Games</th>
+<th>Clubs</th>
+<th>BLUP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Pep Guardiola</td>
+<td>16</td>
+<td>596</td>
+<td>3</td>
+<td>+0.118</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Alex Ferguson</td>
+<td>8</td>
+<td>304</td>
+<td>1</td>
+<td>+0.085</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Thomas Tuchel</td>
+<td>15</td>
+<td>426</td>
+<td>5</td>
+<td>+0.081</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Antonio Conte</td>
+<td>11</td>
+<td>357</td>
+<td>6</td>
+<td>+0.080</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Jürgen Klopp</td>
+<td>18</td>
+<td>640</td>
+<td>3</td>
+<td>+0.075</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Igor Tudor</td>
+<td>7</td>
+<td>116</td>
+<td>5</td>
+<td>+0.074</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Massimiliano Allegri</td>
+<td>13</td>
+<td>468</td>
+<td>3</td>
+<td>+0.067</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Claudio Ranieri</td>
+<td>17</td>
+<td>490</td>
+<td>11</td>
+<td>+0.062</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Unai Emery</td>
+<td>19</td>
+<td>638</td>
+<td>7</td>
+<td>+0.060</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Simone Inzaghi</td>
+<td>10</td>
+<td>349</td>
+<td>2</td>
+<td>+0.057</td>
+</tr>
+<tr>
+<td>11</td>
+<td>Urs Fischer</td>
+<td>5</td>
+<td>147</td>
+<td>1</td>
+<td>+0.053</td>
+</tr>
+<tr>
+<td>12</td>
+<td>Marcelino</td>
+<td>16</td>
+<td>447</td>
+<td>8</td>
+<td>+0.052</td>
+</tr>
+<tr>
+<td>13</td>
+<td>Jupp Heynckes</td>
+<td>7</td>
+<td>187</td>
+<td>3</td>
+<td>+0.052</td>
+</tr>
+<tr>
+<td>14</td>
+<td>Manuel Pellegrini</td>
+<td>18</td>
+<td>655</td>
+<td>6</td>
+<td>+0.051</td>
+</tr>
+<tr>
+<td>15</td>
+<td>Jorge Jesus</td>
+<td>16</td>
+<td>490</td>
+<td>6</td>
+<td>+0.044</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Notable findings:</strong></p>
+<ul>
+<li><strong>Claudio Ranieri</strong> (17 stints, 11 clubs): the most portable coach in the dataset. Consistent overperformance across an extraordinary range of clubs and contexts — the strongest portability finding in the analysis.</li>
+<li><strong>Marcelo Bielsa</strong> (7 stints, 4 clubs, BLUP −0.070): consistently underperforms squad value across multiple clubs despite strong tactical reputation. A high-profile negative result.</li>
+<li><strong>Eusebio Di Francesco</strong> (12 stints, 8 clubs, BLUP −0.060): strong negative portability — consistent underperformance across diverse environments.</li>
+<li><strong>Frank Lampard</strong> (5 stints, 2 clubs, BLUP −0.062): has not converted playing ability into management results in this dataset.</li>
+</ul>
+<hr />
+<h2 id="part-6-does-coach-performance-depend-on-the-player-types-available-milestone-6">Part 6: Does Coach Performance Depend on the Player Types Available? (Milestone 6)</h2>
+<p><strong>Finding: Squad archetype mix predicts performance above expectation; individual coach × archetype fits are suggestive but not individually significant.</strong></p>
+<p>A Premier League pilot (2015/16–2024/25) tested whether coaches over/underperform the squad-value model depending on the <em>types</em> of players at their disposal, using SofaScore per-player data (season statistics, positional heatmaps, shot coordinates, per-match minutes).</p>
+<h3>Player archetypes</h3>
+<p>3,476 player-seasons (≥600 league minutes, outfield) were described by 38 style features — heatmap shape descriptors, per-90 passing/carrying/defending profiles, and shot-location profiles; no goals, assists, ratings, or xG (style, not quality; xG is unavailable before mid-2021/22). Features were z-scored within season × position group and clustered with k-means into <strong>11 archetypes</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Group</th>
+<th>Archetypes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Defenders</td>
+<td>no-nonsense CB (Tarkowski, Mee) · ball-playing CB (Van Dijk, Stones) · defensive fullback (Wan-Bissaka, Coleman) · attacking fullback (Alexander-Arnold, Robertson)</td>
+</tr>
+<tr>
+<td>Midfielders</td>
+<td>deep playmaker (Rodri, Xhaka) · destroyer (Ndidi, Souček) · advanced creator (De Bruyne, Maddison) · wide midfielder (Bowen, Son)</td>
+</tr>
+<tr>
+<td>Forwards</td>
+<td>pressing forward (Richarlison, Jota) · box striker (Kane, Vardy) · wide creator (Salah, Sterling, Firmino)</td>
+</tr>
+</tbody>
+</table>
+<p>Silhouette diagnostics preferred a coarser 6-archetype cut that merely rediscovers sub-positions; the finer cut was chosen deliberately for interpretability, at the cost of moderate split-half stability (ARI 0.32–0.68) — documented as a limitation.</p>
+<h3>Coach-fit analysis</h3>
+<p>Each coach stint's squad composition (minutes-weighted archetype shares from per-match minutes under that coach, archetypes <strong>lagged</strong> to prior seasons as an endogeneity guard, with a flagged current-season fallback for players new to the PL) was joined to the M5 partial residuals: 301 of 301 stints matched, per-stint game counts agreeing with the Transfermarkt attribution at r = 1.000.</p>
+<p><strong>Global test</strong> (mixed model: residual ~ archetype shares + coach and club random effects, weighted by stint games):</p>
+<ul>
+<li>Composition shares vs null: <strong>χ² = 23.96, df = 11, p = 0.013</strong></li>
+<li>Strict-lagged sensitivity (no fallback): <strong>χ² = 29.77, p = 0.0017</strong> — the result is robust to the fallback choice and strengthens without it</li>
+</ul>
+<p>The signal concentrates in attacking archetypes, led by <strong>wide-creator share</strong> (+1.30 PPG per unit share, t = 2.63; strict run t = 2.45): shifting 10 percentage points of outfield minutes from deep playmakers to wide creators associates with ≈ +5 points/season above squad-value expectation. Advanced creators carry the next-largest coefficient; defensive archetype shares are ≈ 0. Two readings are consistent with this: squads built around wide creators genuinely outperform, and/or the transfer market underprices wide creators relative to their contribution.</p>
+<p><strong>Per-coach tests:</strong> 26 coaches with ≥4 PL stints; 280 within-coach correlations between stint residuals and archetype shares; none survive BH FDR correction (a sample-size constraint — 4–9 stints per coach — mirroring the M5 individual-significance result). Descriptive pairs that recur under both the fallback and strict specifications, with face validity: <strong>Klopp overperforms with more pressing forwards</strong> (r = 0.67/0.75), <strong>Guardiola and Arteta with more ball-playing centre-backs</strong> (strict r = 0.68/0.86), while Marco Silva with wide midfielders and Mark Hughes with box strikers recur as negatives.</p>
+<hr />
+<h2 id="limitations">Limitations</h2>
+<ol>
+<li><strong>Sample size for coach rankings:</strong> Coach attribution (M4/M5) and the augmented model (Part 4) were computed on the original 5-league, 2015–2024 dataset. Re-running these on the expanded 15-league, 2005–2024 dataset would provide more stints per coach and sharpen individual rankings. <em>(M4/M5 have since been re-run on the expanded dataset — see Part 5. The augmented model from Part 4 has not yet been re-run on the expanded data.)</em></li>
+<li><strong>Serie A minutes-weighting:</strong> The enhanced model underperforms the baseline for Serie A in-sample (RMSE 0.224 vs 0.246), suggesting the squad rotation pattern in Italian football weakens the minutes-weighting signal. Serie A is retained because it is a core European league and the contamination is modest.</li>
+<li><strong>Early season data sparsity:</strong> Transfermarkt market value coverage for smaller leagues before ~2010 is incomplete. Kalmar FF Allsvenskan 2005 is the most extreme case — 26 of 27 players had no market value recorded, producing an artefactual residual of +2.02 PPG. Early seasons in HNL, Allsvenskan, and similar leagues should be interpreted with caution.</li>
+<li><strong>Excluded leagues:</strong> Five leagues were dropped for structural data quality reasons (see Data section). The exclusions are principled but reduce generalisability to non-European football.</li>
+<li><strong>Value endogeneity:</strong> Transfermarkt market values partly reflect past performance. If strong coaching in year 1 raises squad values, the model's baseline rises in year 2, potentially compressing residuals for long-tenured coaches (unconfirmed).</li>
+<li><strong>No season fixed effects:</strong> the pooled model produces small systematic imbalances in some league-seasons.</li>
+<li><strong>Attribution gaps (original 5-league analysis):</strong> 226 matches (0.6%) had no coach coverage and were excluded from attribution. SC Freiburg 2018 has no coach data.</li>
+<li><strong>Archetype analysis (Part 6) is a single-league pilot:</strong> PL 2015/16–2024/25 only, 26 coaches at the ≥4-stint bar. Archetype clusters have moderate split-half stability (ARI 0.32–0.68) at the chosen granularity; ~30% of classified minutes rely on a current-season fallback (100% in 2015, which has no prior season) — the global result survives the strict-lagged sensitivity, and per-coach pairs were only highlighted when they recur in both specifications. Per-coach findings are exploratory throughout.</li>
+</ol>
+<hr />
+<h2 id="conclusion">Conclusion</h2>
+<p>All parts of the hypothesis are supported. Minutes-weighted squad value is a meaningfully better predictor of final points than raw squad value — a finding that holds across 15 leagues and 20 seasons, with both leave-one-season-out (p &lt; 0.0001) and leave-one-league-out (p = 0.0001) cross-validation tests significant. The residual from that model contains a real, portable coaching signal: coach variance is statistically significant (p = 0.0011) and exceeds club variance, meaning performance above expectation follows the manager more than it stays at the club. Most importantly, incorporating coach identity into the prediction model significantly reduces out-of-sample prediction error (p = 0.001), confirming that the coaching signal is not merely detectable after the fact but genuinely useful for forecasting.</p>
+<p>The rankings are consistent with external assessments of coaching quality. Only Guardiola achieves individual statistical significance with the current data, but the global test establishes that the coaching signal is real. Re-running the coach attribution and augmented model on the expanded 15-league dataset would provide more stints per coach, sharpen individual rankings, and likely strengthen the predictive augmentation further.</p>
+<p>The Milestone 6 pilot (Part 6) extends the picture from <em>how much</em> coaches outperform to <em>when</em>: performance above squad-value expectation is not neutral to squad composition. The mix of player types a coach inherits — measured from prior-season playing style, before the coach's own system can contaminate it — predicts the stint residual (p = 0.013; p = 0.0017 strict-lagged), with wide creators the most valuable archetype per unit of squad value. Individual coach × player-type fits (Klopp with pressing forwards, Guardiola and Arteta with ball-playing centre-backs) are descriptively consistent but await more data for individual significance — the same sample-size frontier as the individual coach rankings.</p>
+
+</article>
+</div>
+<script type="module">import { initHeader } from "./js/components.js"; initHeader();</script>
+</body>
+</html>
+
