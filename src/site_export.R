@@ -243,7 +243,8 @@ se_export_coaches <- function(d) {
       career = list(
         first_season = min(stints$season),
         last_season  = max(stints$season),
-        leagues      = unname(se_league_names[unique(stints$league)]),
+        # I() keeps length-1 vectors as JSON arrays under auto_unbox
+        leagues      = I(unname(se_league_names[unique(stints$league)])),
         n_stints     = nrow(stints),
         total_games  = sum(stints$n_games),
         n_clubs      = n_distinct(stints$club_num)
@@ -332,7 +333,7 @@ se_export_teams <- function(d) {
       id      = as.integer(club_num),
       name    = name,
       crest   = unname(se_crest_path(d, club_num)),
-      leagues = unname(se_league_names[unique(seasons$league)]),
+      leagues = I(unname(se_league_names[unique(seasons$league)])),
       is_b_team = any(seasons$is_b_team),
       aggregate = list(
         n_seasons     = nrow(seasons),
@@ -431,7 +432,7 @@ se_export_leagues <- function(d) {
     out <- list(
       id      = slug,
       name    = unname(se_league_names[slug]),
-      seasons = sort(unique(lr$season)),
+      seasons = I(sort(unique(lr$season))),
       stats = list(
         n_team_seasons = nrow(lr),
         r2   = se_num(cor(ok$predicted_ppg, ok$points_per_game)^2),

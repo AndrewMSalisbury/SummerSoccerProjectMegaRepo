@@ -161,6 +161,10 @@ function renderStats(L) {
     perfList("All-time underperformers", L.stats.top_underperformers),
     coachList("Most games coached", L.stats.top_coaches));
   wrap.append(lists);
+  wrap.append(el("p", { class: "footnote" },
+    "Extreme entries from pre-2010 seasons in smaller leagues can reflect " +
+    "sparse Transfermarkt market-value coverage rather than genuine " +
+    "over/under-performance — see the writeup's limitations."));
   return wrap;
 }
 

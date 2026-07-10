@@ -4,7 +4,7 @@
 **Author:** Andrew Salisbury
 **Date:** July 10, 2026
 **Design reference:** `Docs/Website_Design.md` (approved)
-**Status:** Not started
+**Status:** Complete — all phases implemented and QA'd July 10, 2026 (see `Docs/Session_Log_2026-07-10.md`)
 
 Phases are ordered so every phase ends in something verifiable. Phases 3–6 each deliver a working page; nothing in a later phase is needed to check an earlier one. The crest scrape (Phase 8) can run in the background any time after Phase 1.
 

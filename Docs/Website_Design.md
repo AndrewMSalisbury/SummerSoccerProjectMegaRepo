@@ -3,7 +3,7 @@
 **Project:** Football Coach Valuation Model — presentation website
 **Author:** Andrew Salisbury
 **Date:** July 10, 2026
-**Status:** Approved — implementation not yet started
+**Status:** Implemented July 10, 2026 (`site/`; build record in `Docs/Website_Implementation_Plan.md` and `Docs/Session_Log_2026-07-10.md`)
 
 ---
 

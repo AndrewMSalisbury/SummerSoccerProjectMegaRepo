@@ -54,4 +54,9 @@ Optional remaining: 2025/26 pass-coordinate validation (~11k requests).
 
 Unchosen direction (dropped for scope): **Player Development Score** — coach impact on player transfer value growth.
 
-Unchosen direction (dropped for scope): **Player Development Score** — coach impact on player transfer value growth.
+---
+
+## Website ✓
+**Completed: July 10, 2026**
+
+Static presentation site (`site/`) covering every published result: a page per coach (2,341 — career PPG chart with club crests as clickable data points, grades/BLUPs from both ranking cuts, player-type fit), per club (496 — sortable coach history, actual-vs-expected seasons, squad value trends), and per league (14 — season selector, standings sortable by points or overperformance, diverging residual chart), plus the full writeup and a searchable leaderboard home page. Design in `Docs/Website_Design.md`, build plan in `Docs/Website_Implementation_Plan.md`. Regenerate data with `export_site_data()` (`src/site_export.R`); serve locally per `site/README.md`. Club crests scraped for all 496 clubs (`xx_data_populate_team_crests()`).

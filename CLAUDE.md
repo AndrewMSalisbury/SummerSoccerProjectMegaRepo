@@ -91,6 +91,16 @@ The Milestone 6 coach/player-type fit analysis. Pure cache-readers (no scraping,
 
 Data conventions that will bite if forgotten: SofaScore **shot coordinates put the attacked goal at (0, 50)** (heatmaps attack toward x = 100); **`match_stats$team_ss_id` is the player's club at scrape time, not the match team** — derive the match side from `is_home` + the event's home/away ids; season stat fields `outfielderBlocks`/`ballRecovery` exist only from 2023/24 and must not be used as features.
 
+### Website Layer (`src/site_export.R`, `site/`)
+
+A static presentation site lives in `site/` at the repo root — the one place the R code writes outside `src/data/` (it is a publishing target, not analysis data). Design: `Docs/Website_Design.md`; build plan: `Docs/Website_Implementation_Plan.md`.
+
+- `export_site_data()` (`se_` prefix, working dir `src/`) regenerates everything under `site/data/` (per-coach/team/league JSON keyed by TM numeric ids, leaderboard, search index, meta), `site/assets/` (coach images + club crests copied from `data/images/`), and `site/writeup.html` (converted from `Docs/Summary_of_Findings.md` via `{commonmark}`). It wipes and rebuilds those paths; never edit them by hand. Hand-written files (`*.html` except writeup, `css/`, `js/`) are never touched.
+- Export inputs: `data/results/*.rds` — including `coach_grades_*.rds` (written by `save_coach_grades()` in `coach_attribution.R`) and `archetype_fit.rds` (written by `cf_save_results()` in `coach_fit.R`). Re-run those two savers after re-running M5/M6 before exporting.
+- **jsonlite gotcha:** the export uses `auto_unbox = TRUE`, so any vector that can be length 1 but must stay a JSON array needs `I()` (see `leagues`, `seasons` in the exporters) or the frontend crashes on `.join`/iteration.
+- Club crests: `xx_raw_team_crest()` / `xx_data_populate_team_crests()` in `source_data.r` download from the TM image CDN (`wappen/head/<id>.png` — no page scrape). 404 on both URL variants is recorded as permanently missing in `data/cache/team_crests.rds`; transient failures (including empty 200s) retry on the next run. All 496 active-league clubs are downloaded.
+- The frontend is dependency-free vanilla JS (ES modules, hand-rolled SVG charts, light/dark via CSS custom properties). Pages fetch JSON, so serve the folder (`python -m http.server` in `site/`) rather than opening `file://`. Grades never render without their cut label ("Top-5 leagues" / "All leagues") — the two cuts use separate grading curves.
+
 ## Data Schemas
 
 | Cache file | Key columns |
