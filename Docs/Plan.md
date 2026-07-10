@@ -245,3 +245,15 @@ See `Docs/Session_Log_2026-07-09b.md` for full detail.
 
 ### Completed When
 Archetypes are validated and interpretable, squad composition measures are lagged and joined to residuals, the fit analysis is run with documented statistical evidence, and findings are written up. **All done July 9 except the optional pass-coordinate validation.**
+
+---
+
+## Website ✓
+**Completed: July 10, 2026**
+
+Static presentation site in `site/` covering every published result. Designed and planned first (`Docs/Website_Design.md`, `Docs/Website_Implementation_Plan.md` — the plan's ten phases are the granular steps and each records its verification), then built in a single session; see `Docs/Session_Log_2026-07-10.md` for the build record, bugs found by rendering, and the QA pass.
+
+Key pieces: result exports (`save_coach_grades()`, `cf_save_results()`), the JSON exporter (`src/site_export.R`, `export_site_data()`), the club-crest scraper (496/496 clubs from the TM image CDN), and the vanilla-JS frontend (coach/team/league/home/writeup pages, hand-rolled SVG charts, light + dark mode).
+
+### Completed When
+Every page type renders with verified numbers, interactions work (crest click-through, sort toggles, season switcher, search), the JSON link sweep is clean, and docs are updated. **All verified July 10.** Deferred by choice: public hosting (GitHub-Pages-ready).
