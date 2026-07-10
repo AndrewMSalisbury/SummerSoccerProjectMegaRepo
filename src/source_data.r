@@ -453,6 +453,106 @@ xx_data_populate_coach_images <- function() {
   invisible(lookup)
 }
 
+# Downloads one club's crest to dest_path. Club crests live at a predictable
+# Transfermarkt CDN URL keyed by numeric club id (wappen/head/<id>.png,
+# verified 2026-07-10 — no page scrape needed; the club page header image is
+# a lazy-load placeholder). Added for the website (Docs/Website_Design.md
+# sec. 6.1). Returns:
+#   "ok"      — crest saved
+#   "missing" — 404 on both URL variants (permanently no crest)
+#   "retry"   — transient network/HTTP failure; caller should not record it
+xx_raw_team_crest <- function(numeric_id, dest_path) {
+  cat('## fetching crest for club', numeric_id, '\n')
+  Sys.sleep(2)
+  for (variant in c("head", "normal")) {
+    url <- sprintf("https://tmssl.akamaized.net/images/wappen/%s/%s.png",
+                   variant, numeric_id)
+    resp <- tryCatch(
+      httr::GET(
+        url,
+        httr::add_headers(
+          `referer`    = "https://www.transfermarkt.com/",
+          `user-agent` = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
+        ),
+        httr::write_disk(dest_path, overwrite = TRUE)
+      ),
+      error = function(e) NULL
+    )
+    if (is.null(resp)) { unlink(dest_path); return("retry") }
+    code <- httr::status_code(resp)
+    # unknown ids return 200 with an empty body, not 404 — treat tiny files
+    # as missing and try the next variant
+    if (code == 200 && isTRUE(file.size(dest_path) >= 100)) return("ok")
+    unlink(dest_path)
+    if (code != 404) {
+      cat('  HTTP', code, '— will retry next run\n')
+      return("retry")
+    }
+  }
+  cat('  404 on both variants — recording as missing\n')
+  "missing"
+}
+
+# Downloads crest images for all unique clubs in the teams cache (active
+# leagues only) that have not yet been downloaded. Crests are saved to
+# data/images/crests/ named by the club's Transfermarkt numeric ID (e.g.
+# 281.png). Mirrors xx_data_populate_coach_images(): a lookup table at
+# data/cache/team_crests.rds records successes and confirmed no-crest clubs
+# (both skipped on re-run); transient failures are not recorded and retry on
+# the next call. Pass club_ids to scrape a specific set of club page URLs.
+xx_data_populate_team_crests <- function(club_ids = NULL) {
+  images_dir  <- "data/images/crests"
+  lookup_path <- "data/cache/team_crests.rds"
+  dir.create(images_dir, recursive = TRUE, showWarnings = FALSE)
+
+  if (is.null(club_ids)) {
+    active <- unlist(xx_all_leagues(), use.names = FALSE)
+    club_ids <- xx_data_cache$teams |>
+      dplyr::filter(purrr::map_lgl(league_season_id,
+                                   \(ls) any(startsWith(ls, active)))) |>
+      dplyr::mutate(club_id = gsub("/saison_id/\\d+$", "", team_season_id)) |>
+      # a club renamed across seasons yields several slug variants of the same
+      # numeric id — download each crest once
+      dplyr::mutate(numeric_id = stringr::str_extract(club_id, "(?<=/verein/)\\d+")) |>
+      dplyr::distinct(numeric_id, .keep_all = TRUE) |>
+      dplyr::pull(club_id)
+  }
+
+  if (file.exists(lookup_path)) {
+    lookup <- readRDS(lookup_path)
+  } else {
+    lookup <- data.frame(
+      club_id    = character(),
+      local_path = character(),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  todo <- setdiff(unique(club_ids), lookup$club_id)
+  cat('## downloading crests for', length(todo), 'clubs\n')
+
+  for (cid in todo) {
+    numeric_id <- stringr::str_extract(cid, "(?<=/verein/)\\d+")
+    if (is.na(numeric_id)) {
+      cat('  WARNING: no numeric id in', cid, '— skipping\n')
+      next
+    }
+    local_path <- file.path(images_dir, paste0(numeric_id, ".png"))
+
+    status <- xx_raw_team_crest(numeric_id, local_path)
+    if (status == "retry") next
+    lookup <- rbind(lookup, data.frame(
+      club_id    = cid,
+      local_path = if (status == "ok") local_path else NA_character_,
+      stringsAsFactors = FALSE
+    ))
+    saveRDS(lookup, lookup_path)
+    if (status == "ok") cat('  saved:', local_path, '\n')
+  }
+
+  invisible(lookup)
+}
+
 # Compute team points given a set of matches.
 xx_team_points <- function(matches) {
   if (nrow(matches) == 0) {

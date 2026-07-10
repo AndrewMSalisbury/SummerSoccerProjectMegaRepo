@@ -481,6 +481,25 @@ grade_coaches <- function(coach_blups, mean_score = 75, sd_score = 10) {
   invisible(result)
 }
 
+# Grades both saved BLUP cuts and writes coach_grades_top5.rds /
+# coach_grades_14league.rds to data/results/ for the website export
+# (Docs/Website_Design.md sec. 6.2, Website_Implementation_Plan.md Phase 0.1).
+# rank is the coach's position within the cut, ordered by BLUP descending.
+save_coach_grades <- function(results_dir = "data/results") {
+  cuts <- c(top5 = "coach_blups_top5.rds", `14league` = "coach_blups_14league.rds")
+  out <- lapply(names(cuts), function(cut) {
+    blups <- readRDS(file.path(results_dir, cuts[[cut]]))
+    graded <- grade_coaches(blups) |>
+      dplyr::mutate(rank = dplyr::row_number()) |>
+      dplyr::select(coach_id, coach_name, blup, numeric_grade, letter_grade,
+                    rank, n_stints, total_games, n_clubs)
+    saveRDS(graded, file.path(results_dir, paste0("coach_grades_", cut, ".rds")))
+    graded
+  })
+  names(out) <- names(cuts)
+  invisible(out)
+}
+
 # Runs the full Milestone 5 pipeline in order.
 # residuals_tbl should come from run_milestone4() or compute_residuals().
 # min_coverage: drop team-seasons where <X% of minutes have valued players (default 80).

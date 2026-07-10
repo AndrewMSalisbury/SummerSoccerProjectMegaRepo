@@ -322,3 +322,46 @@ cf_run_analysis <- function(min_stints = 4) {
     per_coach_strict = per_coach_strict
   ))
 }
+
+# Persists the M6 results the website needs (Docs/Website_Design.md sec. 6.2,
+# Website_Implementation_Plan.md Phase 0.2) to data/results/archetype_fit.rds.
+# Runs cf_run_analysis() unless handed a precomputed result.
+#   per_coach: every (coach, archetype) pair from both specifications;
+#     recurs_in_strict marks pairs with the same sign and unadjusted p < 0.10
+#     in BOTH the fallback and strict-lagged runs — the bar Session_Log
+#     2026-07-09b used for reportable descriptive pairs.
+#   global: LRT + wide-creator headline coefficient for both specifications.
+cf_save_results <- function(res = NULL, results_dir = "data/results") {
+  if (is.null(res)) res <- cf_run_analysis()
+
+  join_cols <- c("coach_id", "coach_name", "archetype", "archetype_label")
+  per_coach <- res$per_coach |>
+    select(all_of(join_cols), n_stints, r_fallback = r, p_fallback = p) |>
+    full_join(
+      res$per_coach_strict |>
+        select(all_of(join_cols), r_strict = r, p_strict = p),
+      by = join_cols
+    ) |>
+    mutate(recurs_in_strict = !is.na(r_fallback) & !is.na(r_strict) &
+             sign(r_fallback) == sign(r_strict) &
+             p_fallback < 0.10 & p_strict < 0.10)
+
+  coef_f3 <- function(m) unname(summary(m)$coefficients["share_F3", c(1, 3)])
+  f3 <- coef_f3(res$global$full)
+  f3s <- coef_f3(res$global_strict$full)
+  global <- list(
+    chisq        = res$global$lrt$Chisq[2],
+    df           = res$global$lrt$Df[2],
+    p            = res$global$lrt$`Pr(>Chisq)`[2],
+    chisq_strict = res$global_strict$lrt$Chisq[2],
+    p_strict     = res$global_strict$lrt$`Pr(>Chisq)`[2],
+    f3_coef = f3[1], f3_t = f3[2], f3_coef_strict = f3s[1], f3_t_strict = f3s[2]
+  )
+
+  out <- list(per_coach = per_coach, global = global)
+  saveRDS(out, file.path(results_dir, "archetype_fit.rds"))
+  cat(sprintf("archetype_fit.rds: %d coach-archetype pairs (%d recur in strict), global p = %.4f / %.4f strict\n",
+              nrow(per_coach), sum(per_coach$recurs_in_strict),
+              global$p, global$p_strict))
+  invisible(out)
+}
