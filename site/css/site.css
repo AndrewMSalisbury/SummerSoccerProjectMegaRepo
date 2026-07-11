@@ -1,6 +1,9 @@
 /* site.css — shared chrome for the coach valuation site.
    Color roles follow the dataviz reference palette; light/dark swap in one
-   place via custom properties. */
+   place via custom properties. Theme resolution: the user toggle stamps
+   data-theme on <html> (see js/theme.js) and wins over the system
+   preference; with no stamp, prefers-color-scheme decides. The dark
+   variable set therefore appears twice — keep both copies identical. */
 
 :root {
   --page: #f9f9f7;
@@ -18,10 +21,14 @@
   --div-mid: #f0efec;    /* diverging neutral midpoint */
   --good-text: #006300;
   --accent-wash: rgba(42, 120, 214, 0.10);
+  /* grade polarity (letters stay ink; these tint wash + border) */
+  --grade-pos: #008300;
+  --grade-mid: #898781;
+  --grade-neg: #d03b3b;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --page: #0d0d0d;
     --surface: #1a1a19;
     --ink: #ffffff;
@@ -37,7 +44,31 @@
     --div-mid: #383835;
     --good-text: #0ca30c;
     --accent-wash: rgba(57, 135, 229, 0.14);
+    --grade-pos: #0ca30c;
+    --grade-mid: #898781;
+    --grade-neg: #e66767;
   }
+}
+
+:root[data-theme="dark"] {
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --baseline: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --series-1: #3987e5;
+  --series-2: #199e70;
+  --pos: #3987e5;
+  --neg: #e66767;
+  --div-mid: #383835;
+  --good-text: #0ca30c;
+  --accent-wash: rgba(57, 135, 229, 0.14);
+  --grade-pos: #0ca30c;
+  --grade-mid: #898781;
+  --grade-neg: #e66767;
 }
 
 * { box-sizing: border-box; }
@@ -66,6 +97,12 @@ a:hover { text-decoration: underline; }
   top: 0;
   z-index: 50;
 }
+.site-header::before {
+  content: "";
+  display: block;
+  height: 3px;
+  background: linear-gradient(90deg, var(--series-1), var(--series-2));
+}
 .site-header .container {
   display: flex;
   align-items: center;
@@ -76,9 +113,20 @@ a:hover { text-decoration: underline; }
   padding-bottom: 6px;
 }
 .site-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 700;
   color: var(--ink);
   white-space: nowrap;
+}
+.site-title::before {
+  content: "";
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, var(--series-1), var(--series-2));
+  flex-shrink: 0;
 }
 .site-title:hover { text-decoration: none; }
 .nav-links { display: flex; align-items: center; gap: 14px; }
@@ -169,6 +217,23 @@ a:hover { text-decoration: underline; }
 .search-results a.active { background: var(--accent-wash); text-decoration: none; }
 .search-results .empty { padding: 8px 10px; color: var(--muted); }
 
+/* theme toggle */
+.theme-toggle {
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--ink-2);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+.theme-toggle:hover { color: var(--ink); background: var(--accent-wash); }
+.theme-toggle svg { width: 17px; height: 17px; display: block; }
+
 /* ---------- page scaffolding ---------- */
 
 main.container { padding-top: 24px; padding-bottom: 48px; }
@@ -176,6 +241,18 @@ main.container { padding-top: 24px; padding-bottom: 48px; }
 h1 { font-size: 26px; margin: 0 0 4px; }
 h2 { font-size: 19px; margin: 32px 0 10px; }
 h3 { font-size: 16px; margin: 20px 0 8px; }
+
+/* section-title accent bar (app pages only; the writeup keeps its rules) */
+main.container h2::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 0.9em;
+  margin-right: 9px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--series-1), var(--series-2));
+  vertical-align: -0.12em;
+}
 
 .subtitle { color: var(--ink-2); margin: 0 0 16px; }
 
@@ -258,6 +335,7 @@ h3 { font-size: 16px; margin: 20px 0 8px; }
 .stat-tile {
   background: var(--surface);
   border: 1px solid var(--border);
+  border-top: 3px solid var(--series-1);
   border-radius: 10px;
   padding: 10px 14px;
   min-width: 108px;
@@ -430,13 +508,42 @@ table.data img.mini.face { object-fit: cover; border-radius: 50%; }
   border-radius: 6px;
   padding: 0 6px;
 }
+
+/* grade tiers — a green↔red diverging ramp with a neutral midpoint (same
+   polarity language as residuals); letters stay ink, the hue carries
+   wash + border, and A/B (F/D) differ by strength, not hue */
+.grade-a { --tier: var(--grade-pos); --wash: 20%; --bord: 60%; }
+.grade-b { --tier: var(--grade-pos); --wash: 9%;  --bord: 30%; }
+.grade-c { --tier: var(--grade-mid); --wash: 12%; --bord: 45%; }
+.grade-d { --tier: var(--grade-neg); --wash: 9%;  --bord: 30%; }
+.grade-f { --tier: var(--grade-neg); --wash: 20%; --bord: 60%; }
+.grade-chip.graded {
+  background: color-mix(in srgb, var(--tier) var(--wash), transparent);
+  border-color: color-mix(in srgb, var(--tier) var(--bord), transparent);
+}
+.grade-letter.graded {
+  background: color-mix(in srgb, var(--tier) var(--wash), transparent);
+  border: 1.5px solid color-mix(in srgb, var(--tier) var(--bord), transparent);
+  border-radius: 12px;
+  padding: 8px 13px;
+}
 .muted { color: var(--muted); }
 
 /* ---------- home ---------- */
 
 .hero { margin: 28px 0 20px; }
-.hero h1 { font-size: 32px; }
+.hero h1 {
+  font-size: 40px;
+  letter-spacing: -0.01em;
+  background: linear-gradient(90deg, var(--series-1), var(--series-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--series-1); /* fallback if background-clip:text unsupported */
+  width: fit-content;
+}
 .hero p { max-width: 640px; color: var(--ink-2); }
+.hero .hero-link { margin: 2px 0 0; font-size: 13.5px; }
 
 .tile-grid {
   display: grid;
@@ -449,6 +556,7 @@ table.data img.mini.face { object-fit: cover; border-radius: 50%; }
   gap: 10px;
   background: var(--surface);
   border: 1px solid var(--border);
+  border-left: 4px solid var(--tile-accent, var(--series-1));
   border-radius: 10px;
   padding: 12px 14px;
   color: var(--ink);
@@ -547,5 +655,6 @@ table.data img.mini.face { object-fit: cover; border-radius: 50%; }
   .entity-header { gap: 12px; }
   .entity-photo { width: 84px; height: 84px; }
   h1 { font-size: 22px; }
+  .hero h1 { font-size: 30px; }
   .grade-letter { font-size: 36px; }
 }

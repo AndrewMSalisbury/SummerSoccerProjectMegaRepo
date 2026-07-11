@@ -3,7 +3,7 @@
 
 import { loadJSON, getParam, el, clear, showError,
          fmtSeason, fmtPpg, fmtSigned, fmtPoints } from "./data.js";
-import { initHeader, coachImg, statTile, seasonSpan } from "./components.js";
+import { initHeader, coachImg, statTile, seasonSpan, gradeTier } from "./components.js";
 import { careerChart } from "./charts.js";
 
 initHeader();
@@ -59,7 +59,7 @@ function renderGradeCard(r) {
         el("div", { class: "muted" }, "(needs ≥3 stints and ≥10 games)")));
   }
   const card = el("div", { class: "grade-card" },
-    el("div", { class: "grade-letter" }, r.letter_grade),
+    el("div", { class: "grade-letter" + gradeTier(r.letter_grade) }, r.letter_grade),
     el("div", { class: "grade-detail" },
       el("div", {}, el("span", { class: "cut-label" }, r.cut_label)),
       el("div", {}, el("strong", {}, `${r.numeric_grade.toFixed(1)} / 100`),

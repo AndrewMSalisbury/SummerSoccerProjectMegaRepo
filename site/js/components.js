@@ -33,7 +33,8 @@ export async function initHeader() {
       el("a", { href: "index.html" }, "Home"),
       dropdown,
       el("a", { href: "writeup.html" }, "Writeup")),
-    el("div", { class: "search-box" }, input, results)));
+    el("div", { class: "search-box" }, input, results),
+    themeToggle()));
 
   initSearch(input, results);
 
@@ -45,6 +46,53 @@ export async function initHeader() {
   } catch {
     menu.append(el("a", { href: "index.html" }, "(league list unavailable)"));
   }
+}
+
+// ---------- theme toggle ----------
+
+// js/theme.js stamps any saved choice on <html> before first paint; this
+// button flips the effective theme and persists it.
+function effectiveTheme() {
+  return document.documentElement.dataset.theme ||
+    (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+}
+
+function themeIcon(mode) {
+  // shows the mode a click switches TO: moon while light, sun while dark
+  const s = svgEl("svg", { viewBox: "0 0 24 24", fill: "none",
+    stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round" });
+  if (mode === "dark") {
+    s.append(svgEl("path", {
+      d: "M20.4 14.2A8.5 8.5 0 0 1 9.8 3.6 8.5 8.5 0 1 0 20.4 14.2Z",
+      fill: "currentColor", stroke: "none" }));
+  } else {
+    s.append(svgEl("circle", { cx: 12, cy: 12, r: 4.2, fill: "currentColor",
+      stroke: "none" }));
+    for (const [x1, y1, x2, y2] of [
+      [12, 2, 12, 4.5], [12, 19.5, 12, 22], [2, 12, 4.5, 12], [19.5, 12, 22, 12],
+      [4.9, 4.9, 6.7, 6.7], [17.3, 17.3, 19.1, 19.1],
+      [4.9, 19.1, 6.7, 17.3], [17.3, 6.7, 19.1, 4.9],
+    ]) s.append(svgEl("line", { x1, y1, x2, y2 }));
+  }
+  return s;
+}
+
+function themeToggle() {
+  const btn = el("button", { class: "theme-toggle", type: "button" });
+  function refresh() {
+    const next = effectiveTheme() === "dark" ? "light" : "dark";
+    btn.setAttribute("aria-label", `Switch to ${next} mode`);
+    btn.title = `Switch to ${next} mode`;
+    clear(btn).append(themeIcon(next));
+  }
+  btn.addEventListener("click", () => {
+    const next = effectiveTheme() === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("theme", next); } catch { /* storage blocked */ }
+    refresh();
+  });
+  refresh();
+  return btn;
 }
 
 function initSearch(input, results) {
@@ -127,6 +175,30 @@ function nameHash(name) {
   return h;
 }
 
+// Each league has its own fixed accent color (the one place the site uses a
+// wide categorical range; everything else sticks to blue/aqua + the
+// green↔red grade/residual polarity). Keyed by league slug.
+const LEAGUE_HUES = {
+  "premier-league":     "#4a3aa7",  // violet
+  "laliga":             "#e34948",  // red
+  "laliga2":            "#e87ba4",  // magenta
+  "serie-a":            "#2a78d6",  // blue
+  "bundesliga":         "#d95926",  // deep orange-red
+  "ligue-1":            "#0d366b",  // navy
+  "championship":       "#199e70",  // deep aqua
+  "liga-portugal":      "#008300",  // green
+  "jupiler-pro-league": "#c98500",  // amber
+  "eredivisie":         "#eb6834",  // orange
+  "superliga":          "#d55181",  // dark magenta
+  "ekstraklasa":        "#86b6ef",  // light blue
+  "1-hnl":              "#1baf7a",  // aqua
+  "super-lig":          "#eda100",  // yellow
+};
+
+export function leagueHue(slug) {
+  return LEAGUE_HUES[slug] || "#2a78d6";
+}
+
 export function teamAbbr(name) {
   const stop = new Set(["fc", "cf", "afc", "ac", "as", "ss", "sc", "cd", "rc",
                         "de", "the", "1", "b"]);
@@ -189,10 +261,17 @@ export function silhouetteSvg(cls = "mini face") {
 
 // ---------- grade chip (never rendered without its cut label) ----------
 
+// tier classes tint the chip/letter by grade band (A → F); the letter itself
+// stays in ink so readability never depends on the hue
+export function gradeTier(letter) {
+  const t = (letter || "").charAt(0).toLowerCase();
+  return "abcdf".includes(t) ? ` graded grade-${t}` : "";
+}
+
 export function gradeChip(grade) {
   if (!grade) return el("span", { class: "muted" }, "Unranked");
   return el("span", { title: `Rank ${grade.rank} of ${grade.n_ranked} — ${grade.cut_label}` },
-    el("span", { class: "grade-chip" }, grade.letter),
+    el("span", { class: "grade-chip" + gradeTier(grade.letter) }, grade.letter),
     " ",
     el("span", { class: "muted" }, `#${grade.rank} · ${grade.cut_label}`));
 }

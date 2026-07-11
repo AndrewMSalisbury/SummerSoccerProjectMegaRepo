@@ -1,7 +1,7 @@
 // home.js — hero, dataset stat tiles, top-coach leaderboard, league tiles.
 
 import { loadJSON, el, clear, fmtSigned } from "./data.js";
-import { initHeader, coachImg, statTile } from "./components.js";
+import { initHeader, coachImg, statTile, gradeTier, leagueHue } from "./components.js";
 
 initHeader();
 init();
@@ -27,13 +27,9 @@ async function init() {
   const d = meta.dataset;
   main.append(
     el("div", { class: "hero" },
-      el("h1", {}, "Which coaches beat their squad's price tag?"),
-      el("p", {},
-        "A minutes-weighted squad-value model predicts what each team should score. " +
-        "The gap between prediction and reality — measured across ",
-        el("strong", {}, `${d.team_seasons.toLocaleString()} team-seasons`),
-        " — contains a real, portable coaching signal. ",
-        el("a", { href: "writeup.html" }, "Read the full writeup →"))),
+      el("h1", {}, "Coach Rankings"),
+      el("p", { class: "hero-link" },
+        el("a", { href: "writeup.html" }, "How the model works — read the full writeup →"))),
     el("div", { class: "stat-row" },
       statTile("Leagues", String(d.leagues)),
       statTile("Seasons", `${d.last_season - d.first_season + 1}`,
@@ -46,7 +42,8 @@ async function init() {
   main.append(el("h2", {}, "Top coaches — performance above squad-value expectation"),
     el("p", { class: "subtitle" },
       `${lb.cut_label} cut, ranked by BLUP (shrunk toward zero when data is sparse). ` +
-      "Grades are a bell curve over ranked coaches."));
+      "Grades are a bell curve over ranked coaches. " +
+      "Stints, clubs, and games are full-career totals across all 14 leagues."));
   main.append(renderLeaderboard(lb));
 
   main.append(el("h2", {}, "Leagues"));
@@ -54,6 +51,7 @@ async function init() {
   for (const [slug, name] of Object.entries(meta.league_names)) {
     grid.append(el("a", {
       class: "league-tile", href: `league.html?id=${encodeURIComponent(slug)}`,
+      style: `--tile-accent: ${leagueHue(slug)}`,
     }, name));
   }
   main.append(grid);
@@ -89,7 +87,8 @@ function renderLeaderboard(lb) {
           c.significant ? el("span", {
             class: "grade-chip", title: "statistically significant after FDR correction",
           }, "sig") : null)),
-        el("td", {}, el("span", { class: "grade-chip" }, c.letter_grade)),
+        el("td", {}, el("span", { class: "grade-chip" + gradeTier(c.letter_grade) },
+          c.letter_grade)),
         el("td", { class: "num" }, c.numeric_grade.toFixed(1)),
         el("td", { class: "num" }, fmtSigned(c.blup, 3)),
         el("td", { class: "num" }, String(c.n_stints)),

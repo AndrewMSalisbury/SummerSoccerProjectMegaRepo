@@ -4,7 +4,7 @@
 import { loadJSON, getParam, el, clear, showError, fmtSeason, fmtPpg,
          fmtSigned, fmtPoints, fmtMoney } from "./data.js";
 import { initHeader, crestImg, coachImg, statTile, seasonSpan,
-         sortableTable } from "./components.js";
+         sortableTable, gradeTier } from "./components.js";
 import { dumbbellChart, lineChart } from "./charts.js";
 
 initHeader();
@@ -108,7 +108,8 @@ function renderCoachHistory(t) {
         : el("span", { class: "muted" }, r.note || "unknown") },
     { label: "Grade", render: r => r.grade
         ? el("span", { title: `${r.grade.cut_label} cut` },
-            el("span", { class: "grade-chip" }, r.grade.letter),
+            el("span", { class: "grade-chip" + gradeTier(r.grade.letter) },
+              r.grade.letter),
             el("span", { class: "muted" },
               ` #${r.grade.rank}·${r.grade.cut_label === "Top-5 leagues" ? "T5" : "All"}`))
         : el("span", { class: "muted" }, r.coach ? "unranked" : "") },
