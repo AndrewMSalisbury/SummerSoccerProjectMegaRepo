@@ -169,6 +169,8 @@ This is noted as a caveat on the rankings: long-tenured coaches at a single club
 
 M4 and M5 were re-run on the full expanded dataset. A minutes-coverage filter (≥80% of team minutes must have valued players) was applied before coach attribution to exclude team-seasons where sparse Transfermarkt data would produce artefactual residuals — 88 team-seasons were dropped, 4,999 retained.
 
+*Correction (2026-07-10): a bug in the stint builder duplicated a coach's season totals when they had two tenure brackets in the same team-season (caretaker then permanent, or sacked and re-appointed) — 79 stints were double-counted, double-weighting those stints in the coach statistics and the mixed model. All Part 5 figures below reflect the corrected data (8,207 stints across 2,341 coaches). Parts 2–4 record the original 5-league analysis as it was run; the handful of affected stints there does not change any of those conclusions.*
+
 ### Residual Analysis (14 leagues)
 
 - 5,080 valid residuals (7 NA from non-positive normalised squad value)
@@ -180,11 +182,11 @@ M4 and M5 were re-run on the full expanded dataset. A minutes-coverage filter (�
 
 | Component | Variance | % of total |
 |---|---|---|
-| Coach | 0.0029 | 1.9% |
-| Club | 0.0051 | 3.4% |
-| Residual | 0.1434 | 94.7% |
+| Coach | 0.0027 | 1.8% |
+| Club | 0.0049 | 3.2% |
+| Residual | 0.1439 | 95.0% |
 
-**Likelihood ratio test: χ² = 6.87, df = 1, p = 0.0088.**
+**Likelihood ratio test: χ² = 6.01, df = 1, p = 0.0142.**
 
 The coach effect remains statistically significant, but club variance now exceeds coach variance. This reversal from the original result reflects the composition of the expanded dataset: most coaches in smaller leagues never move between leagues, making cross-club portability hard to detect. Dominant clubs in smaller leagues (Dinamo Zagreb, Legia Warsaw, Club Brugge) also create strong persistent club signals that inflate the club component.
 
@@ -194,11 +196,11 @@ To isolate the elite-coaching signal, M4 and M5 were re-run on the 5 major Europ
 
 | Component | Variance | % of total |
 |---|---|---|
-| Coach | 0.0045 | 3.6% |
-| Club | 0.0044 | 3.6% |
-| Residual | 0.1156 | 92.8% |
+| Coach | 0.0044 | 3.5% |
+| Club | 0.0048 | 3.9% |
+| Residual | 0.1150 | 92.6% |
 
-**Likelihood ratio test: χ² = 7.23, df = 1, p = 0.0072.**
+**Likelihood ratio test: χ² = 6.80, df = 1, p = 0.0091.**
 
 Coach and club variance are essentially tied. This sits between the original 5-league result (coach 8.5% > club 4.9%, 2015–2024 only) and the 14-league result. Extending to 20 seasons gives elite clubs more time to accumulate a stable identity signal, narrowing the gap — but the coach effect holds its own.
 
@@ -207,8 +209,8 @@ Coach and club variance are essentially tied. This sits between the original 5-l
 | Dataset | Coach % | Club % | Coach > Club? |
 |---|---|---|---|
 | 5 leagues, 2015–2024 (original) | 8.5% | 4.9% | Yes |
-| 5 leagues, 2005–2024 | 3.6% | 3.6% | Tied |
-| 14 leagues, 2005–2024 | 1.9% | 3.4% | No |
+| 5 leagues, 2005–2024 | 3.5% | 3.9% | Tied |
+| 14 leagues, 2005–2024 | 1.8% | 3.2% | No |
 
 The pattern is interpretable: in datasets where elite coaches move frequently between leagues (the top-5 context), their portable effect is easier to detect and exceeds club-level persistence. In broader datasets with more locally-anchored coaches, club environment dominates.
 
@@ -220,27 +222,27 @@ Rankings use BLUPs from the top-5-leagues run, which offers the most stints per 
 
 | Rank | Coach | Stints | Games | Clubs | BLUP |
 |---|---|---|---|---|---|
-| 1 | Pep Guardiola | 16 | 596 | 3 | +0.118 |
-| 2 | Alex Ferguson | 8 | 304 | 1 | +0.085 |
-| 3 | Thomas Tuchel | 15 | 426 | 5 | +0.081 |
-| 4 | Antonio Conte | 11 | 357 | 6 | +0.080 |
-| 5 | Jürgen Klopp | 18 | 640 | 3 | +0.075 |
-| 6 | Igor Tudor | 7 | 116 | 5 | +0.074 |
-| 7 | Massimiliano Allegri | 13 | 468 | 3 | +0.067 |
-| 8 | Claudio Ranieri | 17 | 490 | 11 | +0.062 |
+| 1 | Pep Guardiola | 16 | 596 | 3 | +0.114 |
+| 2 | Alex Ferguson | 8 | 304 | 1 | +0.083 |
+| 3 | Thomas Tuchel | 15 | 426 | 5 | +0.078 |
+| 4 | Antonio Conte | 11 | 357 | 6 | +0.078 |
+| 5 | Jürgen Klopp | 18 | 640 | 3 | +0.073 |
+| 6 | Igor Tudor | 7 | 116 | 5 | +0.072 |
+| 7 | Massimiliano Allegri | 13 | 468 | 3 | +0.066 |
+| 8 | Claudio Ranieri | 17 | 490 | 11 | +0.061 |
 | 9 | Unai Emery | 19 | 638 | 7 | +0.060 |
-| 10 | Simone Inzaghi | 10 | 349 | 2 | +0.057 |
-| 11 | Urs Fischer | 5 | 147 | 1 | +0.053 |
-| 12 | Marcelino | 16 | 447 | 8 | +0.052 |
-| 13 | Jupp Heynckes | 7 | 187 | 3 | +0.052 |
-| 14 | Manuel Pellegrini | 18 | 655 | 6 | +0.051 |
-| 15 | Jorge Jesus | 16 | 490 | 6 | +0.044 |
+| 10 | Simone Inzaghi | 10 | 349 | 2 | +0.056 |
+| 11 | Marcelino | 16 | 447 | 8 | +0.052 |
+| 12 | Urs Fischer | 5 | 147 | 1 | +0.051 |
+| 13 | Jupp Heynckes | 7 | 187 | 3 | +0.051 |
+| 14 | Manuel Pellegrini | 18 | 655 | 6 | +0.049 |
+| 15 | Eddie Howe | 9 | 331 | 2 | +0.048 |
 
 **Notable findings:**
 - **Claudio Ranieri** (17 stints, 11 clubs): the most portable coach in the dataset. Consistent overperformance across an extraordinary range of clubs and contexts — the strongest portability finding in the analysis.
-- **Marcelo Bielsa** (7 stints, 4 clubs, BLUP −0.070): consistently underperforms squad value across multiple clubs despite strong tactical reputation. A high-profile negative result.
-- **Eusebio Di Francesco** (12 stints, 8 clubs, BLUP −0.060): strong negative portability — consistent underperformance across diverse environments.
-- **Frank Lampard** (5 stints, 2 clubs, BLUP −0.062): has not converted playing ability into management results in this dataset.
+- **Marcelo Bielsa** (7 stints, 4 clubs, BLUP −0.068): consistently underperforms squad value across multiple clubs despite strong tactical reputation. A high-profile negative result.
+- **Eusebio Di Francesco** (12 stints, 8 clubs, BLUP −0.058): strong negative portability — consistent underperformance across diverse environments.
+- **Frank Lampard** (5 stints, 2 clubs, BLUP −0.060): has not converted playing ability into management results in this dataset.
 
 ---
 

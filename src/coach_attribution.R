@@ -401,8 +401,14 @@ build_coach_residuals <- function(residuals_tbl, min_coverage = 80) {
       coaches |> filter(team_season_id == team_sid)
     )
 
+    # one row per coach: a sacked-and-reappointed coach has two tenure
+    # brackets in coaches.rds, and joining both would duplicate the stint
+    # row (the attribution above already totals all their matches once) —
+    # keep the earliest date_from
     coach_dates <- coaches |>
       filter(team_season_id == team_sid) |>
+      arrange(date_from) |>
+      distinct(coach_id, .keep_all = TRUE) |>
       select(coach_id, date_from)
 
     attributed |>

@@ -91,9 +91,9 @@ se_load <- function() {
     )
 
   d$cr <- d$cr |>
-    # build_coach_residuals() duplicates a stint row when a coach had two
-    # tenure brackets in the same team-season (sacked and re-appointed) —
-    # same dedupe rule as cf_build_analysis_table(): keep the earliest
+    # guard: build_coach_residuals() dedupes tenure brackets since 2026-07-10;
+    # kept as a no-op safety net against stale results files (rule: earliest
+    # date_from per team-season × coach, same as cf_build_analysis_table())
     group_by(team_season_id, coach_id) |>
     slice_min(date_from, n = 1, with_ties = FALSE) |>
     ungroup() |>
@@ -455,11 +455,23 @@ se_export_leagues <- function(d) {
 # --- home page + search + meta ----------------------------------------------------
 
 se_export_small <- function(d) {
+  # stint/game/club counts in grades5 cover top-5-league stints only; the
+  # leaderboard shows full-career totals (same definition as the coach pages'
+  # career header) so the two never disagree for coaches with stints in both
+  # cuts (e.g. a La Liga + LaLiga 2 career)
+  career <- d$cr |>
+    group_by(coach_id) |>
+    summarise(career_stints = n(),
+              career_games  = sum(n_games),
+              career_clubs  = n_distinct(club_num),
+              .groups = "drop")
   lb <- d$grades5 |>
     left_join(d$ranked5 |> select(coach_id, mean_residual, ci_lower, ci_upper,
                                   significant),
               by = "coach_id") |>
+    left_join(career, by = "coach_id") |>
     mutate(coach_num = se_coach_num(coach_id))
+  stopifnot(!anyNA(lb$career_stints))
   leaderboard <- lapply(seq_len(nrow(lb)), function(i) {
     s <- lb[i, ]
     list(
@@ -467,7 +479,8 @@ se_export_small <- function(d) {
       img = unname(d$img_map[s$coach_id]),
       rank = s$rank, letter_grade = s$letter_grade,
       numeric_grade = s$numeric_grade, blup = se_num(s$blup, 4),
-      n_stints = s$n_stints, total_games = s$total_games, n_clubs = s$n_clubs,
+      n_stints = s$career_stints, total_games = s$career_games,
+      n_clubs = s$career_clubs,
       mean_residual = se_num(s$mean_residual),
       significant = isTRUE(s$significant)
     )
@@ -555,7 +568,8 @@ se_export_writeup <- function() {
     '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n',
     '<meta name="viewport" content="width=device-width, initial-scale=1">\n',
     '<title>Summary of Findings — Football Coach Valuation</title>\n',
-    '<link rel="stylesheet" href="css/site.css">\n</head>\n<body>\n',
+    '<link rel="stylesheet" href="css/site.css">\n',
+    '<script src="js/theme.js"></script>\n</head>\n<body>\n',
     '<div id="site-header"></div>\n',
     '<div class="writeup-layout container">\n',
     '<nav class="toc" aria-label="Table of contents"><h3>Contents</h3><ul>',

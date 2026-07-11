@@ -188,9 +188,9 @@ cf_build_analysis_table <- function(composition, coach_residuals = NULL) {
   pl_stints <- coach_residuals |>
     filter(league == "premier-league", season %in% 2015:2024,
            !is.na(partial_residual_ppg)) |>
-    # build_coach_residuals() emits one row per (team-season, coach), but its
-    # date_from join duplicates that row when a coach had two tenure brackets
-    # in the same season (sacked and re-appointed) — keep the earliest
+    # guard: build_coach_residuals() dedupes tenure brackets itself since
+    # 2026-07-10; kept as a no-op safety net (earliest date_from per
+    # team-season × coach)
     group_by(team_season_id, coach_id) |>
     slice_min(date_from, n = 1, with_ties = FALSE) |>
     ungroup()
