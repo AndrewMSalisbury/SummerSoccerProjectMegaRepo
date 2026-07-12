@@ -30,9 +30,21 @@ ss_name_tokens <- function(x) {
   sort(strsplit(ss_normalize_name(x), " ")[[1]])
 }
 
-# Maps each SofaScore team name to a TM team_season_id by token overlap,
-# ignoring generic suffixes (FC, AFC, ...). Returns a data frame.
-ss_crosswalk_team_map <- function(ss_team_names, tm_teams) {
+# Maps SofaScore team names to TM team_season_ids. Returns a data frame in
+# input order; unmappable teams (e.g. lower-division relegation-playoff
+# opponents that appear in SofaScore season data) get NA.
+#
+# Two mechanisms beyond plain token equality, both needed for the big-5
+# leagues (plain Jaccard mapped "Borussia M'gladbach" onto Borussia Dortmund
+# via the shared "borussia"):
+#   - token equivalence: equal, one contains the other (>= 4 chars,
+#     gladbach ~ monchengladbach, lyon ~ lyonnais), or edit distance <= 2 for
+#     tokens of >= 7 chars (nurnberg ~ nuremberg)
+#   - greedy one-to-one assignment: best-scoring pairs claim their teams
+#     first, so an exact "Borussia Dortmund" consumes the Dortmund slot
+#     before Gladbach's weak partial overlap can. Pairs below min_score are
+#     never assigned.
+ss_crosswalk_team_map <- function(ss_team_names, tm_teams, min_score = 0.2) {
   # only drop pure furniture — words like "United"/"City" distinguish clubs
   # (Manchester United vs Manchester City) and must stay
   stopwords <- c("fc", "afc")
@@ -41,23 +53,51 @@ ss_crosswalk_team_map <- function(ss_team_names, tm_teams) {
     core <- setdiff(toks, stopwords)
     if (length(core) == 0) toks else core
   }
-  rows <- lapply(ss_team_names, function(ss_nm) {
-    ss_toks <- core_tokens(ss_nm)
-    overlap <- vapply(tm_teams$team_name, function(tm_nm) {
-      tm_toks <- core_tokens(tm_nm)
-      length(intersect(ss_toks, tm_toks)) /
-        length(union(ss_toks, tm_toks))
-    }, numeric(1))
-    best <- which.max(overlap)
-    data.frame(
-      team_name_ss   = ss_nm,
-      team_season_id = tm_teams$team_season_id[best],
-      team_name_tm   = tm_teams$team_name[best],
-      overlap        = overlap[best],
-      stringsAsFactors = FALSE
-    )
-  })
-  do.call(rbind, rows)
+  tok_eq <- function(a, b) {
+    if (a == b) return(TRUE)
+    if (nchar(a) >= 4 && nchar(b) >= 4 && (grepl(a, b, fixed = TRUE) ||
+                                           grepl(b, a, fixed = TRUE))) return(TRUE)
+    nchar(a) >= 7 && nchar(b) >= 7 && adist(a, b) <= 2
+  }
+  pair_score <- function(ss_toks, tm_toks) {
+    used <- rep(FALSE, length(tm_toks))
+    m <- 0
+    for (a in ss_toks) {
+      hit <- which(!used & vapply(tm_toks, tok_eq, logical(1), a = a))
+      if (length(hit) > 0) { used[hit[1]] <- TRUE; m <- m + 1 }
+    }
+    m / (length(ss_toks) + length(tm_toks) - m)
+  }
+
+  ss_toks <- lapply(ss_team_names, core_tokens)
+  tm_toks <- lapply(tm_teams$team_name, core_tokens)
+  scores <- outer(seq_along(ss_toks), seq_along(tm_toks),
+                  Vectorize(function(i, j) pair_score(ss_toks[[i]], tm_toks[[j]])))
+
+  assignment <- rep(NA_integer_, length(ss_team_names))
+  ord <- order(scores, decreasing = TRUE)
+  tm_used <- rep(FALSE, nrow(tm_teams))
+  for (k in ord) {
+    if (scores[k] < min_score) break
+    i <- (k - 1) %% length(ss_team_names) + 1
+    j <- (k - 1) %/% length(ss_team_names) + 1
+    if (is.na(assignment[i]) && !tm_used[j]) {
+      assignment[i] <- j
+      tm_used[j] <- TRUE
+    }
+  }
+
+  data.frame(
+    team_name_ss   = ss_team_names,
+    team_season_id = ifelse(is.na(assignment), NA_character_,
+                            tm_teams$team_season_id[assignment]),
+    team_name_tm   = ifelse(is.na(assignment), NA_character_,
+                            tm_teams$team_name[assignment]),
+    overlap        = vapply(seq_along(assignment), function(i) {
+      if (is.na(assignment[i])) NA_real_ else scores[i, assignment[i]]
+    }, numeric(1)),
+    stringsAsFactors = FALSE
+  )
 }
 
 # --- player matching -----------------------------------------------------------
@@ -132,25 +172,31 @@ ss_build_crosswalk <- function(season_ss_id, league_season_id) {
                                paste0("players_", season_ss_id, ".rds")))
 
   tm_teams   <- teams[teams$league_season_id == league_season_id, ]
-  tm_players <- players[players$team_season_id %in% tm_teams$team_season_id, ]
+  tm_players <- players[players$team_season_id %in% tm_teams$team_season_id &
+                          !is.na(players$player_name), ]
 
   team_map <- ss_crosswalk_team_map(unique(ss$team_name), tm_teams)
-  low <- team_map[team_map$overlap < 0.34, ]
+  unmapped <- team_map[is.na(team_map$team_season_id), ]
+  if (nrow(unmapped) > 0) {
+    # expected for lower-division relegation-playoff opponents that leak into
+    # SofaScore season data; their players fall through to league-wide match
+    warning("unmapped SofaScore teams (players matched league-wide only): ",
+            paste(unmapped$team_name_ss, collapse = "; "))
+  }
+  low <- team_map[!is.na(team_map$overlap) & team_map$overlap < 0.34, ]
   if (nrow(low) > 0) {
     warning("weak team mappings: ",
             paste(low$team_name_ss, "->", low$team_name_tm, collapse = "; "))
-  }
-  if (anyDuplicated(team_map$team_season_id)) {
-    dup <- team_map[team_map$team_season_id %in%
-                    team_map$team_season_id[duplicated(team_map$team_season_id)], ]
-    stop("two SofaScore teams mapped to the same TM team: ",
-         paste(dup$team_name_ss, "->", dup$team_name_tm, collapse = "; "))
   }
 
   rows <- lapply(seq_len(nrow(ss)), function(i) {
     p <- ss[i, ]
     tsid <- team_map$team_season_id[team_map$team_name_ss == p$team_name]
-    in_team <- tm_players[tm_players$team_season_id == tsid, ]
+    in_team <- if (length(tsid) == 1 && !is.na(tsid)) {
+      tm_players[tm_players$team_season_id == tsid, ]
+    } else {
+      tm_players[0, ]
+    }
 
     m <- ss_match_player(p$player_name, in_team$player_name)
     scope <- "team"

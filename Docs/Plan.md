@@ -208,9 +208,9 @@ A ranked list of coaches exists with mean residuals, confidence intervals, signi
 ---
 
 ## Milestone 6: Coach/Player-Type Fit
-**Target: ~August 10 | Status: Analytical core complete (July 9)**
+**Target: ~August 10 | Status: Complete on all big-5 leagues (July 12)**
 
-Tests whether coaches perform above/below expectation depending on the player types at their disposal, using the M4/M5 residual as the outcome. Pilot scope: Premier League 2015/16–2024/25. Deliverable: descriptive findings with statistical backing.
+Tests whether coaches perform above/below expectation depending on the player types at their disposal, using the M4/M5 residual as the outcome. Piloted on the Premier League 2015/16–2024/25 (July 9), then extended to all five major leagues (July 12). Deliverable: descriptive findings with statistical backing.
 
 ### Design decisions (July 6)
 
@@ -239,12 +239,24 @@ See `Docs/Session_Log_2026-07-09b.md` for full detail.
 
 **6. Write-up** ✓ — `Docs/Summary_of_Findings.md` Part 6 with limitations.
 
+### Completed — big-5 extension (July 12)
+
+See `Docs/Session_Log_2026-07-12.md` for full detail.
+
+1. Big-5 scrape verified complete and committed (all 40 new league-seasons; ~22k player-seasons, ~14k matches). ✓
+2. Archetypes rebuilt on 17,219 player-seasons, z-scored within league × season × position group; same 11-archetype recipe with better stability (split-half ARI 0.62–0.92). M-group relabeled: destroyer / deep playmaker / **wing-back (new — surfaced by back-3 leagues)** / advanced creator. ✓
+3. Team mapper rewritten (greedy one-to-one + token containment/edit-distance) after Gladbach→Dortmund-style failures; relegation-playoff teams filtered; name drift handled. Crosswalks built for all 40 new league-seasons (99.27% matched). ✓
+4. Coach-fit re-run on 1,475 stints across five leagues (1,475/1,475 joined, game counts r = 1.000; cross-league lagging cut fallback share to 26.2%). **Headline replicated: composition predicts residuals, p = 0.030 / strict p = 0.0016; wide-creator share dominant at t ≈ 3.2–3.3** (+10pp ≈ +2.8 pts/season — the pilot's +5 was a small-sample overestimate). Per-coach: 149 coaches ≥4 stints, 0/1,605 survive FDR; recurring pairs led by Gasperini + no-nonsense CBs, Vieira + destroyers, Pochettino − pressing forwards. ✓
+5. Write-up updated (`Summary_of_Findings.md` Part 6); `archetype_fit.rds` regenerated for the site. ✓
+
 ### Remaining (optional)
 
-**5. Validation** — scrape 2025/26 `rating-breakdown` (~11k requests) and confirm archetypes from cheap historical features agree with archetypes from true pass coordinates.
+- **Validation** — scrape 2025/26 `rating-breakdown` (~11k requests/league) and confirm archetypes from cheap historical features agree with archetypes from true pass coordinates.
+- **Website refresh** — re-run `export_site_data()` so coach pages show the big-5 fit results and relabeled archetypes.
+- Review flagged unmatched crosswalk rows in La Liga 2023/24 and Serie A 2021/22 (NA player names in the TM cache).
 
 ### Completed When
-Archetypes are validated and interpretable, squad composition measures are lagged and joined to residuals, the fit analysis is run with documented statistical evidence, and findings are written up. **All done July 9 except the optional pass-coordinate validation.**
+Archetypes are validated and interpretable, squad composition measures are lagged and joined to residuals, the fit analysis is run with documented statistical evidence, and findings are written up. **Done on the full big-5 dataset July 12.**
 
 ---
 

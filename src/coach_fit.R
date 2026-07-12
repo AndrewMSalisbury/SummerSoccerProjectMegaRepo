@@ -22,10 +22,27 @@ source("player_archetypes.R")
 source("sofascore_crosswalk.r")
 library(lme4)
 
+# --- league mapping ---------------------------------------------------------------
+
+# SofaScore league keys (as in ss_big5_leagues) -> TM league constants and the
+# league names build_model_dataset() derives from the URL's 4th segment.
+cf_tm_league_ids <- function() {
+  c(premier_league = xx_league_id_PREMIER_LEAGUE,
+    la_liga        = xx_league_id_LA_LIGA,
+    serie_a        = xx_league_id_SERIE_A,
+    bundesliga     = xx_league_id_BUNDESLIGA,
+    ligue_1        = xx_league_id_LIGUE_1)
+}
+
+cf_tm_league_names <- function() {
+  vapply(cf_tm_league_ids(), function(u) strsplit(u, "/")[[1]][4], character(1))
+}
+
 # --- lagged archetype lookup -----------------------------------------------------
 
-# One row per (player, season) in the pilot: the archetype the player carries
-# into that season.
+# One row per (player, season): the archetype the player carries into that
+# season. Lagging looks across ALL big-5 leagues, so a Serie A -> PL transfer
+# arrives with his Serie A archetype instead of falling back.
 #   archetype    — lagged if available, else current-season (fallback), else NA
 #   is_fallback  — TRUE where the current season had to stand in
 # NA archetype = player never met the minutes threshold in any usable season
@@ -33,29 +50,36 @@ library(lme4)
 cf_player_archetypes <- function() {
   arch <- readRDS(file.path(pa_cache_dir, "archetypes.rds"))
 
-  universe <- bind_rows(lapply(names(ss_pl_season_ids), function(yr) {
-    pa_read("players", ss_pl_season_ids[[yr]]) |>
-      transmute(player_ss_id, season_start_year = as.integer(yr))
-  }))
+  universe <- bind_rows(lapply(names(ss_big5_leagues), function(lg) {
+    bind_rows(lapply(names(ss_big5_leagues[[lg]]$seasons), function(yr) {
+      pa_read("players", ss_big5_leagues[[lg]]$seasons[[yr]]) |>
+        transmute(player_ss_id, season_start_year = as.integer(yr))
+    }))
+  })) |>
+    distinct()   # winter movers appear in two leagues' lists the same season
 
   lagged <- universe |>
     inner_join(
-      arch |> select(player_ss_id, arch_year = season_start_year, archetype),
+      arch |> select(player_ss_id, arch_year = season_start_year,
+                     arch_minutes = minutes, archetype),
       by = "player_ss_id", relationship = "many-to-many"
     ) |>
     filter(arch_year < season_start_year) |>
     group_by(player_ss_id, season_start_year) |>
-    slice_max(arch_year, n = 1, with_ties = FALSE) |>
+    arrange(desc(arch_year), desc(arch_minutes)) |>   # ties: bigger sample wins
+    slice_head(n = 1) |>
     ungroup() |>
     select(player_ss_id, season_start_year, lagged_archetype = archetype)
 
+  current <- arch |>
+    group_by(player_ss_id, season_start_year) |>
+    slice_max(minutes, n = 1, with_ties = FALSE) |>
+    ungroup() |>
+    select(player_ss_id, season_start_year, current_archetype = archetype)
+
   universe |>
-    left_join(lagged, by = c("player_ss_id", "season_start_year")) |>
-    left_join(
-      arch |> select(player_ss_id, season_start_year,
-                     current_archetype = archetype),
-      by = c("player_ss_id", "season_start_year")
-    ) |>
+    left_join(lagged,  by = c("player_ss_id", "season_start_year")) |>
+    left_join(current, by = c("player_ss_id", "season_start_year")) |>
     mutate(
       archetype   = coalesce(lagged_archetype, current_archetype),
       is_fallback = is.na(lagged_archetype) & !is.na(current_archetype)
@@ -65,11 +89,11 @@ cf_player_archetypes <- function() {
 
 # --- per-match minutes under each coach --------------------------------------------
 
-# For one pilot season: every (match, team, player) minutes record, with the
+# For one league-season: every (match, team, player) minutes record, with the
 # TM team_season_id and the coach in charge on the match date.
-cf_season_match_minutes <- function(year) {
-  sid <- ss_pl_season_ids[[as.character(year)]]
-  league_season_id <- xx_league_season_id(xx_league_id_PREMIER_LEAGUE, year)
+cf_season_match_minutes <- function(league_key, year) {
+  sid <- ss_big5_leagues[[league_key]]$seasons[[as.character(year)]]
+  league_season_id <- xx_league_season_id(cf_tm_league_ids()[[league_key]], year)
 
   events <- pa_read("events", sid) |>
     filter(status_type == "finished") |>
@@ -77,18 +101,43 @@ cf_season_match_minutes <- function(year) {
                                            origin = "1970-01-01",
                                            tz = "Europe/London")))
 
+  # Some leagues' event lists include relegation playoffs against
+  # lower-division clubs (Bundesliga: 308 = 306 + 2). Those opponents are not
+  # in the TM league-season and would silently mis-map, so keep only teams
+  # with a real league schedule and only matches between two such teams.
+  appearances <- table(c(events$home_team_ss_id, events$away_team_ss_id))
+  league_team_ids <- as.numeric(names(appearances[appearances >= 10]))
+  events <- events |>
+    filter(home_team_ss_id %in% league_team_ids,
+           away_team_ss_id %in% league_team_ids)
+
   # SofaScore team -> TM team_season_id (token-overlap mapper from the
-  # crosswalk module; duplicate mappings there are a hard error)
+  # crosswalk module); two SofaScore teams resolving to one TM team means the
+  # mapping is broken — stop rather than corrupt the attribution.
+  # One team id can carry several name spellings across a season's events
+  # (SofaScore renames clubs in place, e.g. "Deportivo de A Coruña" vs
+  # "... La Coruña") — keep the modal name per id before mapping.
   ss_team_names <- events |>
     transmute(team_ss_id = home_team_ss_id, team_name = home_team_name) |>
     bind_rows(events |>
                 transmute(team_ss_id = away_team_ss_id,
                           team_name = away_team_name)) |>
-    distinct()
+    count(team_ss_id, team_name) |>
+    group_by(team_ss_id) |>
+    slice_max(n, n = 1, with_ties = FALSE) |>
+    ungroup() |>
+    select(team_ss_id, team_name)
   tm_teams <- xx_data_cache$teams |>
     filter(league_season_id == !!league_season_id)
   team_map <- ss_crosswalk_team_map(ss_team_names$team_name, tm_teams) |>
     bind_cols(ss_team_names |> select(team_ss_id))
+  # after the appearance filter every remaining team is a league team and
+  # must map one-to-one; anything else corrupts the attribution
+  if (any(is.na(team_map$team_season_id))) {
+    stop(league_key, " ", year, ": unmapped league team(s): ",
+         paste(team_map$team_name_ss[is.na(team_map$team_season_id)],
+               collapse = ", "))
+  }
 
   # coach on the day, per (team_season_id, match): reuse the M5 date-bracket
   # rule verbatim so both sides of the join attribute matches identically
@@ -139,8 +188,10 @@ cf_stint_composition <- function(use_fallback = TRUE) {
       mutate(archetype = ifelse(is_fallback, NA_character_, archetype))
   }
 
-  minutes <- bind_rows(lapply(as.integer(names(ss_pl_season_ids)),
-                              cf_season_match_minutes)) |>
+  minutes <- bind_rows(lapply(names(ss_big5_leagues), function(lg) {
+    bind_rows(lapply(as.integer(names(ss_big5_leagues[[lg]]$seasons)),
+                     function(yr) cf_season_match_minutes(lg, yr)))
+  })) |>
     left_join(archetypes, by = c("player_ss_id", "season_start_year")) |>
     mutate(
       archetype   = coalesce(archetype, "unclassified"),
@@ -175,9 +226,9 @@ cf_share_cols <- function(tbl) {
 
 # --- analysis table --------------------------------------------------------------
 
-# Joins the M4/M5 residual pipeline (pooled 14-league model, PL stints kept)
-# to the stint composition. Passing a precomputed coach_residuals table skips
-# the slow model rebuild when iterating.
+# Joins the M4/M5 residual pipeline (pooled 14-league model, big-5 stints
+# kept) to the stint composition. Passing a precomputed coach_residuals table
+# skips the slow model rebuild when iterating.
 cf_build_analysis_table <- function(composition, coach_residuals = NULL) {
   if (is.null(coach_residuals)) {
     dataset       <- build_model_dataset(2005:2024)
@@ -186,7 +237,7 @@ cf_build_analysis_table <- function(composition, coach_residuals = NULL) {
   }
 
   pl_stints <- coach_residuals |>
-    filter(league == "premier-league", season %in% 2015:2024,
+    filter(league %in% cf_tm_league_names(), season %in% 2015:2024,
            !is.na(partial_residual_ppg)) |>
     # guard: build_coach_residuals() dedupes tenure brackets itself since
     # 2026-07-10; kept as a no-op safety net (earliest date_from per
@@ -200,7 +251,7 @@ cf_build_analysis_table <- function(composition, coach_residuals = NULL) {
     mutate(club_id = gsub("/saison_id/\\d+$", "", team_season_id))
 
   cat(sprintf(
-    "PL stints 2015-2024: %d | joined to composition: %d | game-count agreement r = %.3f\n",
+    "Big-5 stints 2015-2024: %d | joined to composition: %d | game-count agreement r = %.3f\n",
     nrow(pl_stints), nrow(tbl), cor(tbl$n_games, tbl$ss_games)
   ))
   tbl
@@ -209,10 +260,10 @@ cf_build_analysis_table <- function(composition, coach_residuals = NULL) {
 # --- models ----------------------------------------------------------------------
 
 # Global test: does squad archetype mix explain stint residuals at all, after
-# coach and club random effects? share_M1 (deep playmaker, the modal
-# archetype) is the reference category — each coefficient reads as the effect
-# of moving minutes from deep playmakers to that type. LRT vs the no-shares
-# null (both fitted with ML).
+# coach and club random effects? share_M1 (destroyer in the big-5 labeling)
+# is the reference category — each coefficient reads as the effect of moving
+# minutes from destroyers to that type. LRT vs the no-shares null (both
+# fitted with ML).
 cf_global_model <- function(tbl, reference = "share_M1") {
   cols <- setdiff(cf_share_cols(tbl), reference)
   rhs  <- paste(c(cols, "fallback_share",
@@ -236,7 +287,7 @@ cf_global_model <- function(tbl, reference = "share_M1") {
   invisible(list(full = full, null = null, lrt = lrt))
 }
 
-# Per-coach descriptive tests: for coaches with >= min_stints PL stints, the
+# Per-coach descriptive tests: for coaches with >= min_stints big-5 stints, the
 # correlation between their stint residuals and each archetype share. These
 # are within-coach correlations (each coach is their own baseline), BH
 # FDR-corrected across all (coach, archetype) pairs. With 4-10 stints per

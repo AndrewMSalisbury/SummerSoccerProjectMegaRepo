@@ -18,14 +18,39 @@
 library(dplyr)
 library(tidyr)
 
-# SofaScore season ids for the PL pilot, keyed by season start year. Kept in
-# sync with source_sofascore.r, which is not sourced here because it loads
-# {chromote} — this file must run in analysis-only sessions.
+# SofaScore season ids, keyed by season start year. Kept in sync with
+# source_sofascore.r, which is not sourced here because it loads {chromote} —
+# this file must run in analysis-only sessions.
 if (!exists("ss_pl_season_ids")) {
   ss_pl_season_ids <- c(
     "2015" = 10356, "2016" = 11733, "2017" = 13380, "2018" = 17359,
     "2019" = 23776, "2020" = 29415, "2021" = 37036, "2022" = 41886,
     "2023" = 52186, "2024" = 61627
+  )
+}
+if (!exists("ss_big5_leagues")) {
+  ss_big5_leagues <- list(
+    premier_league = list(ut = 17, seasons = ss_pl_season_ids),
+    la_liga = list(ut = 8, seasons = c(
+      "2015" = 10495, "2016" = 11906, "2017" = 13662, "2018" = 18020,
+      "2019" = 24127, "2020" = 32501, "2021" = 37223, "2022" = 42409,
+      "2023" = 52376, "2024" = 61643
+    )),
+    serie_a = list(ut = 23, seasons = c(
+      "2015" = 10596, "2016" = 11966, "2017" = 13768, "2018" = 17932,
+      "2019" = 24644, "2020" = 32523, "2021" = 37475, "2022" = 42415,
+      "2023" = 52760, "2024" = 63515
+    )),
+    bundesliga = list(ut = 35, seasons = c(
+      "2015" = 10419, "2016" = 11818, "2017" = 13477, "2018" = 17597,
+      "2019" = 23538, "2020" = 28210, "2021" = 37166, "2022" = 42268,
+      "2023" = 52608, "2024" = 63516
+    )),
+    ligue_1 = list(ut = 34, seasons = c(
+      "2015" = 10373, "2016" = 11648, "2017" = 13384, "2018" = 17279,
+      "2019" = 23872, "2020" = 28222, "2021" = 37167, "2022" = 42273,
+      "2023" = 52571, "2024" = 61736
+    ))
   )
 }
 
@@ -175,34 +200,35 @@ pa_shot_features <- function(season_ss_id) {
 
 # --- assembly --------------------------------------------------------------------
 
-# One row per qualifying player-season across all pilot seasons.
+# One row per qualifying player-season across all big-5 league-seasons.
 #   min_minutes — a player-season needs at least this many league minutes to
 #                 receive features (600 keeps ~2/3 of players and the vast
 #                 majority of minutes; sub-threshold profiles are rate noise).
 # Goalkeepers are excluded: their stat profile is a different universe and
 # their share of the coach-fit composition is handled separately if needed.
-pa_build_features <- function(season_ss_ids = ss_pl_season_ids,
-                              min_minutes = 600) {
-  rows <- lapply(names(season_ss_ids), function(yr) {
-    sid <- season_ss_ids[[yr]]
-    players <- pa_read("players", sid)
+pa_build_features <- function(leagues = ss_big5_leagues, min_minutes = 600) {
+  rows <- list()
+  for (league_key in names(leagues)) {
+    for (yr in names(leagues[[league_key]]$seasons)) {
+      sid <- leagues[[league_key]]$seasons[[yr]]
+      players <- pa_read("players", sid)
 
-    feats <- players |>
-      select(season_ss_id, player_ss_id, player_name, team_ss_id, team_name) |>
-      mutate(season_start_year = as.integer(yr)) |>
-      inner_join(pa_position_groups(sid), by = "player_ss_id") |>
-      left_join(pa_stat_features(sid),    by = "player_ss_id") |>
-      left_join(pa_heatmap_features(sid), by = "player_ss_id") |>
-      left_join(pa_shot_features(sid),    by = "player_ss_id")
+      feats <- players |>
+        select(season_ss_id, player_ss_id, player_name, team_ss_id, team_name) |>
+        mutate(league = league_key, season_start_year = as.integer(yr)) |>
+        inner_join(pa_position_groups(sid), by = "player_ss_id") |>
+        left_join(pa_stat_features(sid),    by = "player_ss_id") |>
+        left_join(pa_heatmap_features(sid), by = "player_ss_id") |>
+        left_join(pa_shot_features(sid),    by = "player_ss_id")
 
-    feats |>
-      mutate(
-        shot_count = coalesce(shot_count, 0L),
-        shot_p90   = shot_count / minutes * 90
-      ) |>
-      filter(position_group != "G", !is.na(minutes), minutes >= min_minutes)
-  })
-
+      rows[[paste(league_key, yr)]] <- feats |>
+        mutate(
+          shot_count = coalesce(shot_count, 0L),
+          shot_p90   = shot_count / minutes * 90
+        ) |>
+        filter(position_group != "G", !is.na(minutes), minutes >= min_minutes)
+    }
+  }
   bind_rows(rows)
 }
 
@@ -215,15 +241,18 @@ pa_feature_cols <- function(features) {
 }
 
 # Imputes remaining NAs (e.g. cross accuracy for players who never crossed,
-# shot location for players who never shot) with the season × position-group
-# median, then z-scores each feature within season × position group so that
-# clustering compares players to their contemporaries in the same role and
-# league-wide drift across the decade cancels out.
+# shot location for players who never shot) with the league × season ×
+# position-group median, then z-scores each feature within league × season ×
+# position group. Z-scoring within league as well as season means a player is
+# described relative to contemporaries in the same competition — otherwise
+# systematic league differences in pace and volume (Serie A passes more,
+# Bundesliga presses higher) would dominate the clusters and archetypes would
+# degenerate into league labels.
 pa_zscore_features <- function(features) {
   cols <- pa_feature_cols(features)
 
   features |>
-    group_by(season_start_year, position_group) |>
+    group_by(league, season_start_year, position_group) |>
     mutate(across(all_of(cols), function(x) {
       x <- ifelse(is.na(x) | is.nan(x), median(x, na.rm = TRUE), x)
       s <- sd(x)
@@ -313,7 +342,7 @@ pa_cluster_archetypes <- function(features, k_range = 2:5, k_fixed = NULL,
 
     assignments[[grp]] <- zg |>
       select(season_ss_id, player_ss_id, player_name, team_name,
-             season_start_year, position_group, minutes) |>
+             league, season_start_year, position_group, minutes) |>
       mutate(
         archetype = paste0(grp, relabel[km$cluster]),
         archetype_label = unname(pa_archetype_labels[archetype])
@@ -368,7 +397,15 @@ pa_face_validity <- function(clusters,
                                          "Jack Grealish", "Riyad Mahrez",
                                          "Mohamed Salah", "Sadio Mané",
                                          "Erling Haaland", "Harry Kane",
-                                         "Jamie Vardy", "Olivier Giroud")) {
+                                         "Jamie Vardy", "Olivier Giroud",
+                                         # non-PL anchors for the big-5 run
+                                         "Lionel Messi", "Sergio Ramos",
+                                         "Sergio Busquets", "Toni Kroos",
+                                         "Giorgio Chiellini", "Jorginho",
+                                         "Robert Lewandowski", "Thomas Müller",
+                                         "Kylian Mbappé", "Ángel Di María",
+                                         "Ciro Immobile", "Manuel Lazzari",
+                                         "Joshua Kimmich", "Filip Kostić")) {
   clusters$assignments |>
     filter(player_name %in% players) |>
     arrange(player_name, season_start_year) |>
@@ -378,15 +415,18 @@ pa_face_validity <- function(clusters,
     arrange(position_group, archetype, player_name)
 }
 
-# Human-readable archetype names, decided with Andrew on 2026-07-09 from the
-# seeded (seed = 6) D=4/M=4/F=3 run. Ids are ordered by mean heatmap depth, so
-# they are stable across re-runs of the same data + seed; if either changes,
+# Human-readable archetype names for the seeded (seed = 6) D=4/M=4/F=3 run on
+# the full big-5 dataset (relabeled 2026-07-12; the PL-only pilot had
+# different M-group semantics). Ids are ordered by mean heatmap depth, so they
+# are stable across re-runs of the same data + seed; if either changes,
 # re-verify with pa_label_archetypes() before trusting these names.
+# M3 (wing-back) only emerged with the big-5 data — back-3 systems are too
+# rare in the PL for the pilot to have found it.
 pa_archetype_labels <- c(
   D1 = "no-nonsense CB",    D2 = "ball-playing CB",
   D3 = "defensive fullback", D4 = "attacking fullback",
-  M1 = "deep playmaker",     M2 = "destroyer",
-  M3 = "advanced creator",   M4 = "wide midfielder",
+  M1 = "destroyer",          M2 = "deep playmaker",
+  M3 = "wing-back",          M4 = "advanced creator",
   F1 = "pressing forward",   F2 = "box striker",
   F3 = "wide creator"
 )

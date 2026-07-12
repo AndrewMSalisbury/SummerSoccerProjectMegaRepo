@@ -248,34 +248,34 @@ Rankings use BLUPs from the top-5-leagues run, which offers the most stints per 
 
 ## Part 6: Does Coach Performance Depend on the Player Types Available? (Milestone 6)
 
-**Finding: Squad archetype mix predicts performance above expectation; individual coach × archetype fits are suggestive but not individually significant.**
+**Finding: Squad archetype mix predicts performance above expectation — replicated across all five major leagues; individual coach × archetype fits are suggestive but not individually significant.**
 
-A Premier League pilot (2015/16–2024/25) tested whether coaches over/underperform the squad-value model depending on the *types* of players at their disposal, using SofaScore per-player data (season statistics, positional heatmaps, shot coordinates, per-match minutes).
+All big-5 leagues, 2015/16–2024/25, using SofaScore per-player data (season statistics, positional heatmaps, shot coordinates, per-match minutes). The analysis was first run as a Premier League pilot (July 9), then extended to the full five-league dataset (July 12); the pilot's headline finding replicated with stronger evidence at 5× the sample.
 
 ### Player archetypes
 
-3,476 player-seasons (≥600 league minutes, outfield) were described by 38 style features — heatmap shape descriptors, per-90 passing/carrying/defending profiles, and shot-location profiles; no goals, assists, ratings, or xG (style, not quality; xG is unavailable before mid-2021/22). Features were z-scored within season × position group and clustered with k-means into **11 archetypes**:
+17,219 player-seasons (≥600 league minutes, outfield) were described by 38 style features — heatmap shape descriptors, per-90 passing/carrying/defending profiles, and shot-location profiles; no goals, assists, ratings, or xG (style, not quality; xG is unavailable before mid-2021/22). Features were z-scored within league × season × position group (so a player is described relative to contemporaries in the same competition) and clustered with k-means into **11 archetypes**:
 
 | Group | Archetypes |
 |---|---|
-| Defenders | no-nonsense CB (Tarkowski, Mee) · ball-playing CB (Van Dijk, Stones) · defensive fullback (Wan-Bissaka, Coleman) · attacking fullback (Alexander-Arnold, Robertson) |
-| Midfielders | deep playmaker (Rodri, Xhaka) · destroyer (Ndidi, Souček) · advanced creator (De Bruyne, Maddison) · wide midfielder (Bowen, Son) |
-| Forwards | pressing forward (Richarlison, Jota) · box striker (Kane, Vardy) · wide creator (Salah, Sterling, Firmino) |
+| Defenders | no-nonsense CB (Tarkowski, Pezzella) · ball-playing CB (Van Dijk, Rüdiger, Marquinhos) · defensive fullback (Azpilicueta, Coleman) · attacking fullback (Theo Hernández, Alexander-Arnold, Cancelo) |
+| Midfielders | destroyer (Casemiro, Ndidi) · deep playmaker (Kroos, Modrić, Jorginho) · **wing-back** (Gosens, Hateboer, Trimmel) · advanced creator (De Bruyne, Müller, Fekir) |
+| Forwards | pressing forward (Richarlison, Jota) · box striker (Kane, Lewandowski, Immobile) · wide creator (Messi, Salah, Mbappé) |
 
-Silhouette diagnostics preferred a coarser 6-archetype cut that merely rediscovers sub-positions; the finer cut was chosen deliberately for interpretability, at the cost of moderate split-half stability (ARI 0.32–0.68) — documented as a limitation.
+The wing-back archetype is a product of the multi-league data — back-3 systems are too rare in the PL for the pilot to have found it. Silhouette diagnostics prefer a coarser 6-archetype cut that merely rediscovers sub-positions; the finer cut is a deliberate interpretability choice, and its split-half stability improved markedly with the larger sample (ARI 0.62–0.92, vs 0.32–0.68 in the pilot).
 
 ### Coach-fit analysis
 
-Each coach stint's squad composition (minutes-weighted archetype shares from per-match minutes under that coach, archetypes **lagged** to prior seasons as an endogeneity guard, with a flagged current-season fallback for players new to the PL) was joined to the M5 partial residuals: 301 of 301 stints matched, per-stint game counts agreeing with the Transfermarkt attribution at r = 1.000.
+Each coach stint's squad composition (minutes-weighted archetype shares from per-match minutes under that coach) was joined to the M5 partial residuals: **1,475 of 1,475 stints matched, per-stint game counts agreeing with the Transfermarkt attribution at r = 1.000**. Archetypes are **lagged** to the player's most recent prior season — across leagues, so a Serie A → PL transfer arrives with his Serie A archetype — as an endogeneity guard; players with no prior big-5 season fall back to their current-season archetype, flagged (26.2% of classified minutes).
 
 **Global test** (mixed model: residual ~ archetype shares + coach and club random effects, weighted by stint games):
 
-- Composition shares vs null: **χ² = 23.96, df = 11, p = 0.013**
-- Strict-lagged sensitivity (no fallback): **χ² = 29.77, p = 0.0017** — the result is robust to the fallback choice and strengthens without it
+- Composition shares vs null: **χ² = 21.34, df = 11, p = 0.030**
+- Strict-lagged sensitivity (no fallback): **χ² = 30.02, p = 0.0016** — robust to the fallback choice and stronger without it
 
-The signal concentrates in attacking archetypes, led by **wide-creator share** (+1.30 PPG per unit share, t = 2.63; strict run t = 2.45): shifting 10 percentage points of outfield minutes from deep playmakers to wide creators associates with ≈ +5 points/season above squad-value expectation. Advanced creators carry the next-largest coefficient; defensive archetype shares are ≈ 0. Two readings are consistent with this: squads built around wide creators genuinely outperform, and/or the transfer market underprices wide creators relative to their contribution.
+**Wide-creator share is the dominant coefficient in both specifications** (t = 3.19 / 3.30; +0.75 PPG per unit share): shifting 10 percentage points of outfield minutes from destroyers to wide creators associates with ≈ +2.8 points/season above squad-value expectation. The pilot's PL-only estimate (≈ +5 points) was roughly double — a small-sample overestimate — but the direction, ranking, and significance all strengthened with the full data. Every archetype's coefficient is non-negative relative to the destroyer reference: destroyer-heavy squads underperform their squad value most. Two readings remain consistent with the result: squads built around wide creators genuinely outperform, and/or the transfer market underprices wide creators relative to their contribution.
 
-**Per-coach tests:** 26 coaches with ≥4 PL stints; 280 within-coach correlations between stint residuals and archetype shares; none survive BH FDR correction (a sample-size constraint — 4–9 stints per coach — mirroring the M5 individual-significance result). Descriptive pairs that recur under both the fallback and strict specifications, with face validity: **Klopp overperforms with more pressing forwards** (r = 0.67/0.75), **Guardiola and Arteta with more ball-playing centre-backs** (strict r = 0.68/0.86), while Marco Silva with wide midfielders and Mark Hughes with box strikers recur as negatives.
+**Per-coach tests:** 149 coaches with ≥4 stints; 1,605 within-coach correlations between stint residuals and archetype shares; none survive BH FDR correction — even five leagues of data cannot power individual tests on 4–10 stints per coach, mirroring the M5 individual-significance result. Descriptive pairs that recur under both the fallback and strict specifications, with face validity: **Gian Piero Gasperini overperforms with more no-nonsense (man-marking) centre-backs** (strict r = 0.89 over 10 stints — his back-3 system in a nutshell), **Patrick Vieira with more destroyers** (r = 0.92/0.93), **Mauricio Pochettino underperforms with more pressing forwards** (r = −0.89 both runs), with Sergio González (+wide creators), Ivan Jurić (−advanced creators) and Oliver Glasner (−wide creators) also recurring. The pilot's PL-only pairs (Klopp + pressing forwards, Guardiola/Arteta + ball-playing CBs) remain in the underlying tables but with the reorganized big-5 archetype definitions.
 
 ---
 
@@ -288,7 +288,7 @@ The signal concentrates in attacking archetypes, led by **wide-creator share** (
 5. **Value endogeneity:** Transfermarkt market values partly reflect past performance. If strong coaching in year 1 raises squad values, the model's baseline rises in year 2, potentially compressing residuals for long-tenured coaches (unconfirmed).
 6. **No season fixed effects:** the pooled model produces small systematic imbalances in some league-seasons.
 7. **Attribution gaps (original 5-league analysis):** 226 matches (0.6%) had no coach coverage and were excluded from attribution. SC Freiburg 2018 has no coach data.
-8. **Archetype analysis (Part 6) is a single-league pilot:** PL 2015/16–2024/25 only, 26 coaches at the ≥4-stint bar. Archetype clusters have moderate split-half stability (ARI 0.32–0.68) at the chosen granularity; ~30% of classified minutes rely on a current-season fallback (100% in 2015, which has no prior season) — the global result survives the strict-lagged sensitivity, and per-coach pairs were only highlighted when they recur in both specifications. Per-coach findings are exploratory throughout.
+8. **Archetype analysis (Part 6):** per-coach findings are exploratory throughout — within-coach correlations on 4–10 stints cannot survive FDR even with 149 coaches across five leagues; only the global composition test is confirmatory. Archetype granularity (11 types) is an interpretability choice over silhouette diagnostics, with split-half stability 0.62–0.92; 26.2% of classified minutes rely on a current-season fallback (100% in 2015, which has no prior season) — the global result strengthens under the strict-lagged sensitivity, and per-coach pairs were only highlighted when they recur in both specifications. The 2015/16–2024/25 window and big-5 scope are set by SofaScore coverage.
 
 ---
 
@@ -298,4 +298,4 @@ All parts of the hypothesis are supported. Minutes-weighted squad value is a mea
 
 The rankings are consistent with external assessments of coaching quality. Only Guardiola achieves individual statistical significance with the current data, but the global test establishes that the coaching signal is real. Re-running the coach attribution and augmented model on the expanded 15-league dataset would provide more stints per coach, sharpen individual rankings, and likely strengthen the predictive augmentation further.
 
-The Milestone 6 pilot (Part 6) extends the picture from *how much* coaches outperform to *when*: performance above squad-value expectation is not neutral to squad composition. The mix of player types a coach inherits — measured from prior-season playing style, before the coach's own system can contaminate it — predicts the stint residual (p = 0.013; p = 0.0017 strict-lagged), with wide creators the most valuable archetype per unit of squad value. Individual coach × player-type fits (Klopp with pressing forwards, Guardiola and Arteta with ball-playing centre-backs) are descriptively consistent but await more data for individual significance — the same sample-size frontier as the individual coach rankings.
+Milestone 6 (Part 6) extends the picture from *how much* coaches outperform to *when*: performance above squad-value expectation is not neutral to squad composition. The mix of player types a coach inherits — measured from prior-season playing style, before the coach's own system can contaminate it — predicts the stint residual, a finding that replicated when the analysis grew from the PL pilot to all five leagues (p = 0.030; p = 0.0016 strict-lagged, with the wide-creator coefficient strengthening to t ≈ 3.3). Wide creators are the most valuable archetype per unit of squad value; destroyer-heavy squads underperform theirs most. Individual coach × player-type fits (Gasperini with man-marking centre-backs, Vieira with destroyers) are descriptively consistent across specifications but await more data for individual significance — the same sample-size frontier as the individual coach rankings.

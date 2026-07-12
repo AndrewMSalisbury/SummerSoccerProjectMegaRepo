@@ -44,13 +44,13 @@ Residuals are linked to the coaches responsible for each team-season. Coaches wi
 ---
 
 ## Milestone 6: Coach/Player-Type Fit ✓
-**Completed: July 9, 2026 (optional pass-coordinate validation outstanding)**
+**Completed: July 9, 2026 (PL pilot) / July 12, 2026 (all big-5 leagues)**
 
 Direction chosen July 6 (the "Playing Style Analysis" branch): derive player archetypes from SofaScore data and test whether coaches systematically over/underperform — per the M4/M5 residual — depending on the player types at their disposal.
 
-Delivered: 11 face-valid player archetypes from 3,476 PL player-seasons (38 style features, k-means within position groups); lagged minutes-weighted squad composition per coach stint (301 stints, 100% joined to M5 residuals). **Headline finding: squad archetype mix predicts performance above squad-value expectation (LRT p = 0.013; strict-lagged sensitivity p = 0.0017), led by wide-creator share.** Per-coach fits are descriptive only (0/280 survive FDR; Klopp + pressing forwards and Guardiola/Arteta + ball-playing CBs recur across specifications). Full pipeline: `src/player_archetypes.R`, `src/coach_fit.R`; findings in `Docs/Summary_of_Findings.md` Part 6.
+Delivered: 11 face-valid player archetypes from 17,219 player-seasons across all five major leagues (38 style features, k-means within position groups; the wing-back archetype only emerged with back-3-league data); lagged minutes-weighted squad composition per coach stint, with cross-league lagging (1,475 stints, 100% joined to M5 residuals). **Headline finding, replicated from the PL pilot at 5× the data: squad archetype mix predicts performance above squad-value expectation (LRT p = 0.030; strict-lagged sensitivity p = 0.0016), led by wide-creator share (t ≈ 3.3; +10pp of minutes ≈ +2.8 points/season).** Per-coach fits are descriptive only (0/1,605 survive FDR; Gasperini + man-marking CBs, Vieira + destroyers, Pochettino − pressing forwards recur across specifications). Full pipeline: `src/player_archetypes.R`, `src/coach_fit.R`; findings in `Docs/Summary_of_Findings.md` Part 6.
 
-Optional remaining: 2025/26 pass-coordinate validation (~11k requests).
+Optional remaining: 2025/26 pass-coordinate validation; website refresh with big-5 fit results.
 
 Unchosen direction (dropped for scope): **Player Development Score** — coach impact on player transfer value growth.
 
