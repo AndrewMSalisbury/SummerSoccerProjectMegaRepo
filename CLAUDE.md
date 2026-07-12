@@ -67,8 +67,10 @@ To run or resume a scrape (idempotent, resumes wherever it stopped):
 ```r
 source("source_sofascore.r")
 ss_data_populate_pl_pilot()   # PL only (complete)
-ss_data_populate_big5()       # all big-5 leagues 2015/16-2024/25 (in progress since 2026-07-09)
+ss_data_populate_big5()       # all big-5 leagues 2015/16-2024/25 (complete 2026-07-12)
 ```
+
+Big-5 coverage notes (verified 2026-07-12): all 50 league-seasons complete. Events include relegation playoffs where a league has them (Bundesliga 308 = 306 + 2 playoff matches); Ligue 1 2019/20 has only 279 matches (COVID abandonment). Shotmaps have a permanent SofaScore coverage hole clustered in 2018/19 (~20–31 missing matches per league outside the PL, recorded as 404).
 
 ### Analysis Layer (`src/tabler.R`)
 
