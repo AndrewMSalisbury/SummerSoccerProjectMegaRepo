@@ -226,7 +226,7 @@ se_export_coaches <- function(d) {
         filter(recurs_in_strict) |>
         arrange(desc(abs(r_fallback)))
       fit <- list(
-        n_stints_pl = max(pc$n_stints, na.rm = TRUE),
+        n_stints = max(pc$n_stints, na.rm = TRUE),
         findings = lapply(seq_len(nrow(findings)), function(i) list(
           label     = findings$archetype_label[i],
           r         = se_num(findings$r_fallback[i], 2),

@@ -33,12 +33,12 @@
 <hr />
 <h2 id="data">Data</h2>
 <ul>
-<li><strong>Source:</strong> Transfermarkt (scraped via custom R pipeline)</li>
-<li><strong>Leagues (active):</strong> 15 leagues — the 5 major European leagues (Premier League, La Liga, Ligue 1, Serie A, Bundesliga) plus Championship, Liga Portugal, Jupiler Pro League, Eredivisie, Danish Superliga, Ekstraklasa, Allsvenskan, HNL, LaLiga 2, Süper Lig</li>
-<li><strong>Excluded leagues:</strong> Argentine Liga Profesional (Transfermarkt ignores <code>saison_id</code> for this league, returning 2024 squad data for all historical seasons — confirmed data corruption); J1 League and Liga MX (sparse/missing data in early seasons and partial-season format issues); Brazilian Série A and MLS (minutes-weighted metric actively hurts predictions — multi-competition squad rotation and salary cap roster construction break the core assumption that Brasileirão minutes reflect squad deployment)</li>
+<li><strong>Sources:</strong> Transfermarkt (squad values, minutes, coaches, matches) and SofaScore (per-player style data for Part 6), both scraped via custom R pipelines</li>
+<li><strong>Leagues (active):</strong> 14 leagues — the 5 major European leagues (Premier League, La Liga, Ligue 1, Serie A, Bundesliga) plus Championship, Liga Portugal, Jupiler Pro League, Eredivisie, Danish Superliga, Ekstraklasa, HNL, LaLiga 2, Süper Lig</li>
+<li><strong>Excluded leagues:</strong> Argentine Liga Profesional (Transfermarkt ignores <code>saison_id</code> for this league, returning 2024 squad data for all historical seasons — confirmed data corruption); J1 League and Liga MX (sparse/missing data in early seasons and partial-season format issues); Brazilian Série A and MLS (minutes-weighted metric actively hurts predictions — multi-competition squad rotation and salary cap roster construction break the core assumption that Brasileirão minutes reflect squad deployment); Allsvenskan (market value coverage too sparse across the full time span — 23.6% of minutes valued in 2005, never above ~94%)</li>
 <li><strong>Seasons:</strong> 2005–2024 (20 seasons)</li>
-<li><strong>Dataset for M3:</strong> 5,403 team-seasons</li>
-<li><strong>Dataset for M4/M5/augmented model:</strong> 976 team-seasons (original 5-league, 2015–2024 subset; coach attribution and rankings have not yet been re-run on the expanded dataset)</li>
+<li><strong>Dataset for M3–M5:</strong> 5,087 team-seasons (14 leagues; Parts 1–3 report the original 5-league results where noted, Part 5 the expanded re-run)</li>
+<li><strong>Dataset for Part 6 (player-type fit):</strong> SofaScore big-5 leagues, 2015/16–2024/25 — 17,219 qualifying player-seasons, 1,475 coach stints</li>
 </ul>
 <hr />
 <h2 id="part-1-does-minutesweighted-squad-value-predict-points-better">Part 1: Does Minutes-Weighted Squad Value Predict Points Better?</h2>

@@ -14,12 +14,12 @@ Minutes-weighted squad value (each player's market value scaled by their share o
 
 ## Data
 
-- **Source:** Transfermarkt (scraped via custom R pipeline)
-- **Leagues (active):** 15 leagues — the 5 major European leagues (Premier League, La Liga, Ligue 1, Serie A, Bundesliga) plus Championship, Liga Portugal, Jupiler Pro League, Eredivisie, Danish Superliga, Ekstraklasa, Allsvenskan, HNL, LaLiga 2, Süper Lig
-- **Excluded leagues:** Argentine Liga Profesional (Transfermarkt ignores `saison_id` for this league, returning 2024 squad data for all historical seasons — confirmed data corruption); J1 League and Liga MX (sparse/missing data in early seasons and partial-season format issues); Brazilian Série A and MLS (minutes-weighted metric actively hurts predictions — multi-competition squad rotation and salary cap roster construction break the core assumption that Brasileirão minutes reflect squad deployment)
+- **Sources:** Transfermarkt (squad values, minutes, coaches, matches) and SofaScore (per-player style data for Part 6), both scraped via custom R pipelines
+- **Leagues (active):** 14 leagues — the 5 major European leagues (Premier League, La Liga, Ligue 1, Serie A, Bundesliga) plus Championship, Liga Portugal, Jupiler Pro League, Eredivisie, Danish Superliga, Ekstraklasa, HNL, LaLiga 2, Süper Lig
+- **Excluded leagues:** Argentine Liga Profesional (Transfermarkt ignores `saison_id` for this league, returning 2024 squad data for all historical seasons — confirmed data corruption); J1 League and Liga MX (sparse/missing data in early seasons and partial-season format issues); Brazilian Série A and MLS (minutes-weighted metric actively hurts predictions — multi-competition squad rotation and salary cap roster construction break the core assumption that Brasileirão minutes reflect squad deployment); Allsvenskan (market value coverage too sparse across the full time span — 23.6% of minutes valued in 2005, never above ~94%)
 - **Seasons:** 2005–2024 (20 seasons)
-- **Dataset for M3:** 5,403 team-seasons
-- **Dataset for M4/M5/augmented model:** 976 team-seasons (original 5-league, 2015–2024 subset; coach attribution and rankings have not yet been re-run on the expanded dataset)
+- **Dataset for M3–M5:** 5,087 team-seasons (14 leagues; Parts 1–3 report the original 5-league results where noted, Part 5 the expanded re-run)
+- **Dataset for Part 6 (player-type fit):** SofaScore big-5 leagues, 2015/16–2024/25 — 17,219 qualifying player-seasons, 1,475 coach stints
 
 ---
 

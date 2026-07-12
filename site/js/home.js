@@ -58,7 +58,7 @@ async function init() {
 
   main.append(el("p", { class: "footnote", style: "margin-top:28px" },
     `Data: Transfermarkt squad values and results, ${d.first_season}–${d.last_season}; ` +
-    `player-type analysis: SofaScore (Premier League pilot). Generated ${meta.generated}.`));
+    `player-type analysis: SofaScore (big-5 leagues, 2015/16–2024/25). Generated ${meta.generated}.`));
 }
 
 function renderLeaderboard(lb) {

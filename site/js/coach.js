@@ -166,19 +166,20 @@ function renderFit(c) {
 
   if (!c.archetype_fit) {
     card.append(el("p", { class: "muted" },
-      "N/A — player-type data currently covers Premier League 2015/16–2024/25 only."));
+      "N/A — player-type data covers the big-5 leagues 2015/16–2024/25, and this " +
+      "coach has fewer than 4 stints there."));
     return card;
   }
 
   const f = c.archetype_fit;
   if (!f.findings.length) {
     card.append(el("p", {},
-      `Tested over ${f.n_stints_pl} Premier League stints: no player-type ` +
+      `Tested over ${f.n_stints} big-5 league stints: no player-type ` +
       "pattern recurs across both analysis specifications."));
   } else {
     card.append(el("div", { class: "chart-sub" },
       `Squad archetypes whose share of minutes tracks this coach's over/under-performance ` +
-      `(${f.n_stints_pl} Premier League stints; shown only when the pattern holds in both ` +
+      `(${f.n_stints} big-5 league stints; shown only when the pattern holds in both ` +
       "the standard and strict-lagged specifications)."));
     const list = el("div", { class: "fit-list" });
     for (const x of f.findings) {
@@ -193,7 +194,7 @@ function renderFit(c) {
     card.append(list);
   }
   card.append(el("p", { class: "footnote" },
-    "Descriptive finding: with 4–9 stints per coach, no individual coach × " +
+    "Descriptive finding: with 4–10 stints per coach, no individual coach × " +
     "player-type test survives multiple-testing correction. See the writeup, Part 6."));
   return card;
 }
