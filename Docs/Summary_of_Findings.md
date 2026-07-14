@@ -279,9 +279,48 @@ Each coach stint's squad composition (minutes-weighted archetype shares from per
 
 ---
 
+## Part 7: Which Coach Should a Given Team Hire? (Coach Recommender)
+
+**Finding: coach quality (the M5 BLUP) is a validated out-of-sample predictor for brand-new coach-club pairings; coach-specific player-type fit and formation-deployment forecasts are real machinery with strong mechanical validity, but did not improve hiring forecasts and ship as exploratory layers only.**
+
+The recommender (design: `Docs/Coach_Recommender_Design.md`; implementation: `src/coach_recommender.R`) answers the conditional question "who is the best coach *for this squad*?" by decomposing predicted points into a deployed-value factor (can the coach's formations field this squad's value?) and a residual factor (coach quality + coach × player-type fit), with career-history plausibility filters on top.
+
+### Formation profiles and rigidity
+
+All 36,022 team-matches across the big-5 SofaScore dataset carry kickoff formations (22 distinct strings). Back-3/5 systems rose from 10.7% of matches in 2015/16 to ~36% by 2024/25 (Serie A 43%, La Liga 16%); genuine two-striker shapes are a third of all matches. Coach formation distributions are recency-weighted with a decay chosen out-of-sample (δ = 0.3 per season — what a coach plays at his *next* club is predicted best by his most recent seasons). A per-coach **rigidity** measure (formation entropy + cross-club persistence) has strong face validity: Vincenzo Italiano 0.99, Klopp 0.91, Sarri 0.85 among the most shape-rigid; Christian Streich, Davide Nicola, and Christophe Galtier among the most adaptive; Gasperini is 97% back-3.
+
+### Deployed-value forecast (mechanically validated)
+
+Squad players are mapped to formation slots via their archetypes (soft eligibility penalties, TM-position fallback), and a max-value XI is computed per formation; a coach's deployable value interpolates between "his shapes" and "the squad's best shape" by his rigidity. The **mechanical gate passed emphatically**: at 316 historical coach arrivals, a player's fit to the incoming coach's shapes predicts his minutes share beyond market value (t = 26.9; mean within-stint Spearman 0.52, positive in 100% of stints). The eligibility matrix tracks real deployment decisions.
+
+### Coach-specific fit slopes (not significant)
+
+The M6 global model was extended with shrunken per-coach random slopes on three composition axes fixed at Phase 0 (creators = F3+M4; spine = ball-players minus destroyers; wing-back share — the planned destroyer and build-up axes correlated at −0.87 and were merged pre-fit). **The slopes are not significant: LRT χ² = 2.65, df = 3, p = 0.449**; the wing-back slope variance shrank to zero. Individual coach × player-type fit remains beyond the data's resolution, consistent with the M6 per-coach FDR results.
+
+### Payoff validation (pre-registered)
+
+Leave-one-season-out over 2016/17–2024/25, forecasting stint PPG for the 785 **new coach-club pairings** (no stint at that club the season before), games-weighted RMSE, layers added one at a time. Primary framing uses only pre-hire information (raw squad value); the sensitivity framing conditions on realized minutes-weighted value.
+
+| Layer added | Pre-hire RMSE | p (vs previous) | Realized RMSE | p |
+|---|---|---|---|---|
+| Value only | 0.3124 | — | 0.3016 | — |
+| + coach quality BLUP | 0.3103 | 0.052 | 0.2992 | **0.016** |
+| + global archetype effects | 0.3099 | 0.33 | 0.3000 | n.s. |
+| + fit slopes + deployment | 0.3101 | n.s. | 0.3003 | n.s. |
+
+Under the pre-registered acceptance rule (a layer ships in the headline score only if it does not hurt out-of-sample RMSE): **the quality layer ships** — knowing the coach's track record improves forecasts of new appointments, a stronger and better-targeted result than Part 4's all-teams test, and evidence the M5 BLUPs generalize to the hiring decision itself. The fit and deployment layers are a wash (−0.0003) and ship as **clearly-labeled exploratory columns**, not in the headline ranking. This asymmetry is itself informative: clubs appear to already hire for fit (survivorship pushes the measurable fit signal toward zero — we never observe the disastrous mismatches that were never hired).
+
+### Similarity layer and plausibility filters
+
+A descriptive companion ranks coaches by cosine similarity between the target squad's archetype mix and the compositions each coach has thrived with (profiles tilted toward overperforming stints; self-similarity gate: a coach's held-out stint ranks at the 82nd percentile against his own profile, median). For Manchester City's 2024/25 squad the strip surfaces Setién, Guardiola, Pochettino, Rose, and Arteta — possession-creator coaches, as it should.
+
+Career-history **plausibility filters** (never mixed into the score) let a club cut the list by: has coached in this league / country, big-5 proven, similar club level (games- and recency-weighted squad-value percentile of clubs coached — Guardiola 100.0, Ferguson 98.9, journeyman firefighters ~50), recently active, and domestic coach (nationality scraped from TM profiles). Every scored suggestion appears on the club's team page for the 96 latest-season big-5 squads, ranked by the validated quality score with exploratory columns alongside; non-big-5 clubs get an honest note instead of a fake team-specific list.
+
+---
+
 ## Limitations
 
-1. **Sample size for coach rankings:** Coach attribution (M4/M5) and the augmented model (Part 4) were computed on the original 5-league, 2015–2024 dataset. Re-running these on the expanded 15-league, 2005–2024 dataset would provide more stints per coach and sharpen individual rankings. *(M4/M5 have since been re-run on the expanded dataset — see Part 5. The augmented model from Part 4 has not yet been re-run on the expanded data.)*
+1. **Sample size for coach rankings:** Coach attribution (M4/M5) and the augmented model (Part 4) were computed on the original 5-league, 2015–2024 dataset. Re-running these on the expanded 15-league, 2005–2024 dataset would provide more stints per coach and sharpen individual rankings. *(M4/M5 have since been re-run on the expanded dataset — see Part 5. The Part 4 question — does coach identity improve out-of-sample prediction? — was re-tested on the expanded-era data in Part 7's payoff validation, on the harder target of new coach-club pairings, and holds: p = 0.016 in the realized-value framing.)*
 2. **Serie A minutes-weighting:** The enhanced model underperforms the baseline for Serie A in-sample (RMSE 0.224 vs 0.246), suggesting the squad rotation pattern in Italian football weakens the minutes-weighting signal. Serie A is retained because it is a core European league and the contamination is modest.
 3. **Early season data sparsity:** Transfermarkt market value coverage for smaller leagues before ~2010 is incomplete. Kalmar FF Allsvenskan 2005 is the most extreme case — 26 of 27 players had no market value recorded, producing an artefactual residual of +2.02 PPG. Early seasons in HNL, Allsvenskan, and similar leagues should be interpreted with caution.
 4. **Excluded leagues:** Five leagues were dropped for structural data quality reasons (see Data section). The exclusions are principled but reduce generalisability to non-European football.
@@ -289,6 +328,7 @@ Each coach stint's squad composition (minutes-weighted archetype shares from per
 6. **No season fixed effects:** the pooled model produces small systematic imbalances in some league-seasons.
 7. **Attribution gaps (original 5-league analysis):** 226 matches (0.6%) had no coach coverage and were excluded from attribution. SC Freiburg 2018 has no coach data.
 8. **Archetype analysis (Part 6):** per-coach findings are exploratory throughout — within-coach correlations on 4–10 stints cannot survive FDR even with 149 coaches across five leagues; only the global composition test is confirmatory. Archetype granularity (11 types) is an interpretability choice over silhouette diagnostics, with split-half stability 0.62–0.92; 26.2% of classified minutes rely on a current-season fallback (100% in 2015, which has no prior season) — the global result strengthens under the strict-lagged sensitivity, and per-coach pairs were only highlighted when they recur in both specifications. The 2015/16–2024/25 window and big-5 scope are set by SofaScore coverage.
+9. **Coach recommender (Part 7):** team-specific suggestions exist only for big-5 clubs with a latest-season squad; every other club gets the quality-only leaderboard. The fit and deployment columns are exploratory — mechanically valid but not validated as forecast improvements — and the validation universe (realized appointments) is survivorship-biased toward fits clubs already chose, so the measurable fit signal is conservative. Kickoff formations miss in-match shape changes. Plausibility filters are career-history proxies, not availability: contracts, wages, and willingness are unmodeled. Coach nationality coverage depends on a slow, resumable Transfermarkt profile scrape and may be partial at any given export.
 
 ---
 
@@ -299,3 +339,5 @@ All parts of the hypothesis are supported. Minutes-weighted squad value is a mea
 The rankings are consistent with external assessments of coaching quality. Only Guardiola achieves individual statistical significance with the current data, but the global test establishes that the coaching signal is real. Re-running the coach attribution and augmented model on the expanded 15-league dataset would provide more stints per coach, sharpen individual rankings, and likely strengthen the predictive augmentation further.
 
 Milestone 6 (Part 6) extends the picture from *how much* coaches outperform to *when*: performance above squad-value expectation is not neutral to squad composition. The mix of player types a coach inherits — measured from prior-season playing style, before the coach's own system can contaminate it — predicts the stint residual, a finding that replicated when the analysis grew from the PL pilot to all five leagues (p = 0.030; p = 0.0016 strict-lagged, with the wide-creator coefficient strengthening to t ≈ 3.3). Wide creators are the most valuable archetype per unit of squad value; destroyer-heavy squads underperform theirs most. Individual coach × player-type fits (Gasperini with man-marking centre-backs, Vieira with destroyers) are descriptively consistent across specifications but await more data for individual significance — the same sample-size frontier as the individual coach rankings.
+
+The coach recommender (Part 7) turns the model toward the decision it was always about: hiring. Its pre-registered validation delivered a sharp verdict — the coach quality signal survives the hardest test available (forecasting brand-new coach-club pairings out-of-sample, p = 0.016), while coach-specific fit and formation-deployment forecasts, despite passing their mechanical checks convincingly, add nothing detectable to hiring forecasts and ship as exploratory context only. The honest summary for a sporting director: the model can tell you *who the good coaches are* with validated confidence, can describe *which squads they have thrived with*, and can flag *whether your squad's value fits their shapes* — but the last two are judgment aids, not predictions.

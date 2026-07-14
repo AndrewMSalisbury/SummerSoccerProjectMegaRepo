@@ -658,3 +658,101 @@ table.data img.mini.face { object-fit: cover; border-radius: 50%; }
   .hero h1 { font-size: 30px; }
   .grade-letter { font-size: 36px; }
 }
+
+/* ---------- suggested coaches (team page recommender section) ---------- */
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+
+.filter-chip {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.filter-chip:hover { border-color: var(--series-1); }
+
+.filter-chip.on {
+  background: var(--accent-wash);
+  border-color: var(--series-1);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.suggest-wrap .table-wrap {
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.suggest-wrap thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+
+.badge-cell {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.badge-mini {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--accent-wash);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.badge-mini.stale {
+  background: transparent;
+  color: var(--muted);
+  border-style: dashed;
+}
+
+.sim-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 0 8px;
+}
+
+.sim-card {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 220px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+}
+
+.sim-card:hover { border-color: var(--series-1); }
+
+.sim-card img, .sim-card svg {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.sim-name { font-weight: 600; font-size: 13.5px; }
+.sim-card .muted { font-size: 12px; }

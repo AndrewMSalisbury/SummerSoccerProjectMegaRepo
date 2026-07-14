@@ -82,6 +82,15 @@ se_load <- function() {
     data.frame(club_id = character(), local_path = character())
   }
 
+  # coach recommender results (Docs/Coach_Recommender_Design.md sec. 9);
+  # absent file -> team pages simply omit the suggestions section
+  d$rec <- if (file.exists("data/results/recommender.rds")) {
+    readRDS("data/results/recommender.rds")
+  } else NULL
+  if (!is.null(d$rec)) {
+    d$rec$facts_by_coach <- split(d$rec$facts, d$rec$facts$coach_id)
+  }
+
   d$res <- d$res |>
     mutate(
       club_id         = gsub("/saison_id/\\d+$", "", team_season_id),
@@ -278,6 +287,88 @@ se_export_coaches <- function(d) {
   cat("coaches exported:", length(coaches), "\n")
 }
 
+# --- suggested coaches (recommender) -------------------------------------------------
+
+# same map as cr_league_countries (coach_recommender.R); duplicated so the
+# exporter stays a standalone results-reader
+se_league_countries <- c(
+  "premier-league" = "England",     "championship" = "England",
+  "laliga" = "Spain",               "laliga2" = "Spain",
+  "serie-a" = "Italy",              "bundesliga" = "Germany",
+  "ligue-1" = "France",             "liga-portugal" = "Portugal",
+  "jupiler-pro-league" = "Belgium", "eredivisie" = "Netherlands",
+  "superliga" = "Denmark",          "ekstraklasa" = "Poland",
+  "1-hnl" = "Croatia",              "super-lig" = "Turkey"
+)
+
+# Builds the team page's suggested-coaches block from recommender.rds, or NULL
+# when the club has no scored latest-season big-5 squad. Ranking is by the
+# validated quality score (payoff rule 2026-07-13); fit/deployment ship as
+# exploratory columns.
+se_suggestions <- function(d, team_season_ids) {
+  if (is.null(d$rec)) return(NULL)
+  ts <- intersect(team_season_ids, names(d$rec$teams))
+  if (length(ts) == 0) return(NULL)
+  entry <- d$rec$teams[[ts[1]]]
+  team_league <- entry$league_key   # e.g. premier_league
+  # league_key -> slug ("premier_league" -> "premier-league")
+  team_slug <- gsub("_", "-", team_league)
+  team_country <- unname(se_league_countries[team_slug])
+
+  s <- entry$suggestions
+  coaches <- lapply(seq_len(nrow(s)), function(i) {
+    r <- s[i, ]
+    f <- d$rec$facts_by_coach[[r$coach_id]]
+    nat <- if (!is.null(f) && !is.na(f$nationality)) {
+      strsplit(f$nationality, ", ")[[1]][1]
+    } else NULL
+    list(
+      id            = as.integer(se_coach_num(r$coach_id)),
+      name          = r$coach_name,
+      img           = unname(d$img_map[r$coach_id]),
+      rank          = r$headline_rank,
+      tier          = r$tier,
+      grade = list(letter = r$letter_grade,
+                   cut_label = if (r$cut == "top5") "Top-5 leagues" else "All leagues",
+                   rank = r$rank_in_cut),
+      quality       = se_num(r$quality, 4),
+      fit           = se_num(r$fit, 4),
+      deployment    = se_num(r$deployment, 4),
+      exploratory_total = se_num(r$uplift_ppg, 4),
+      lo            = se_num(r$lo, 3),
+      hi            = se_num(r$hi, 3),
+      # plausibility badges, precomputed against this team
+      this_league   = !is.null(f) && team_slug %in% f$leagues[[1]],
+      this_country  = !is.null(f) && !is.null(team_country) &&
+                        team_country %in% f$countries[[1]],
+      big5          = !is.null(f) && f$big5_games >= 30,
+      club_level    = if (!is.null(f)) se_num(f$club_level, 1) else NULL,
+      last_season   = if (!is.null(f)) f$last_season else NULL,
+      domestic      = !is.null(nat) && !is.null(team_country) &&
+                        nat == team_country
+    )
+  })
+
+  sim <- entry$similar
+  similar <- lapply(seq_len(nrow(sim)), function(i) list(
+    id         = as.integer(se_coach_num(sim$coach_id[i])),
+    name       = sim$coach_name[i],
+    img        = unname(d$img_map[sim$coach_id[i]]),
+    similarity = se_num(sim$similarity[i], 3),
+    n_stints   = sim$n_stints_b5[i],
+    mean_residual = se_num(sim$mean_res_b5[i], 3)
+  ))
+
+  list(
+    season       = entry$season,
+    team_level   = se_num(entry$team_level, 1),
+    level_band   = 20,   # default +/- percentile band for the level filter
+    active_since = entry$season - 1,   # "recently active" threshold season
+    coaches      = coaches,
+    similar      = similar
+  )
+}
+
 # --- team pages --------------------------------------------------------------------
 
 se_export_teams <- function(d) {
@@ -365,7 +456,8 @@ se_export_teams <- function(d) {
             "no residual — insufficient market value data" else NULL
         )
       }),
-      coach_history = coach_rows[ord]
+      coach_history = coach_rows[ord],
+      suggestions = se_suggestions(d, g$team_season_id)
     )
     se_write_json(out, file.path(se_site_dir, "data/teams",
                                  paste0(club_num, ".json")))

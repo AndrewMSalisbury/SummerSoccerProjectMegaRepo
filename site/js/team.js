@@ -28,6 +28,7 @@ async function init() {
   main.append(renderHeader(t));
   main.append(renderSeasonChart(t));
   main.append(renderCoachHistory(t));
+  main.append(t.suggestions ? renderSuggestions(t) : renderSuggestionsNote());
   main.append(renderValueTrends(t));
 }
 
@@ -154,6 +155,150 @@ function observeSeasonTags(wrap) {
   };
   apply();
   new MutationObserver(apply).observe(wrap, { childList: true });
+}
+
+// ---------- suggested coaches (recommender) ----------
+
+function renderSuggestionsNote() {
+  return el("div", { class: "chart-card suggest-card" },
+    el("div", { class: "chart-title" }, "Suggested coaches"),
+    el("p", { class: "chart-sub", style: "margin-bottom:0" },
+      "Team-specific coach suggestions need SofaScore player-style data, " +
+      "which covers the five major leagues from 2015/16 — this club has no " +
+      "scored squad in the latest season. The overall coach ranking is on ",
+      el("a", { href: "index.html" }, "the leaderboard"),
+      "."));
+}
+
+function renderSuggestions(t) {
+  const s = t.suggestions;
+  const games = (t.seasons.find(x => x.season === s.season) || {}).games || 38;
+
+  const card = el("div", { class: "chart-card suggest-card" },
+    el("div", { class: "chart-title" },
+      `Suggested coaches — ${fmtSeason(s.season)} squad`),
+    el("div", { class: "chart-sub" },
+      "Ranked by the validated quality score: each coach's shrinkage-adjusted " +
+      "career overperformance (points per game above squad-value expectation, " +
+      "vs a league-average coach). Fit and shape columns are exploratory — " +
+      "they describe this squad specifically but did not improve out-of-sample " +
+      "forecasts. Use the chips to filter by career plausibility."));
+
+  // ----- filter chips
+  const filters = {
+    league:   { label: "Has coached in this league",  on: false, test: c => c.this_league },
+    country:  { label: "This country",                on: false, test: c => c.this_country },
+    big5:     { label: "Big-5 proven",                on: false, test: c => c.big5 },
+    level:    { label: `Similar level (±${s.level_band})`, on: false,
+                test: c => c.club_level != null &&
+                  Math.abs(c.club_level - s.team_level) <= s.level_band },
+    active:   { label: "Recently active",             on: false,
+                test: c => c.last_season >= s.active_since },
+    domestic: { label: "Domestic coach",              on: false, test: c => c.domestic },
+  };
+  const chipRow = el("div", { class: "chip-row" });
+  for (const [key, f] of Object.entries(filters)) {
+    const chip = el("button", { class: "filter-chip", type: "button",
+      onclick: () => { f.on = !f.on; chip.classList.toggle("on", f.on); draw(); },
+    }, f.label);
+    chipRow.append(chip);
+  }
+  card.append(chipRow);
+
+  // ----- table
+  const host = el("div", { class: "suggest-wrap" });
+  card.append(host);
+
+  const pts = v => `${fmtSigned(v * games, 1)} pts`;
+  const explCell = v => el("span", { class: "muted" },
+    v === 0 ? "—" : `${fmtSigned(v)} (${fmtSigned(v * games, 1)})`);
+
+  const cols = [
+    { label: "Coach", render: c => el("a", { class: "cell-entity",
+        href: `coach.html?id=${c.id}` }, coachImg(c.img, c.name), c.name) },
+    { label: "Grade", render: c => el("span",
+        { title: `Rank ${c.grade.rank} — ${c.grade.cut_label} cut` },
+        el("span", { class: "grade-chip" + gradeTier(c.grade.letter) },
+          c.grade.letter),
+        el("span", { class: "muted" },
+          ` ${c.grade.cut_label === "Top-5 leagues" ? "T5" : "All"}`)) },
+    { label: "Quality (validated)", cls: "num", render: c =>
+        el("span", { class: c.quality >= 0 ? "delta-pos" : "delta-neg",
+          title: `${fmtSigned(c.quality)} PPG vs an average coach; 95% interval ` +
+                 `${fmtSigned(c.lo)} to ${fmtSigned(c.hi)} PPG on the full score` },
+          pts(c.quality)) },
+    { label: "Fit (exploratory)", cls: "num", render: c =>
+        c.tier === "full" ? explCell(c.fit) : el("span", { class: "muted" }, "n/a") },
+    { label: "Shape (exploratory)", cls: "num", render: c =>
+        c.tier === "full" ? explCell(c.deployment) : el("span", { class: "muted" }, "n/a") },
+    { label: "Career", render: c => badgeCell(c, s) },
+  ];
+
+  function draw() {
+    clear(host);
+    const rows = s.coaches.filter(c =>
+      Object.values(filters).every(f => !f.on || f.test(c)));
+    if (!rows.length) {
+      host.append(el("p", { class: "footnote" },
+        "No suggested coaches match the active filters."));
+      return;
+    }
+    sortableTable(host, rows, cols, {
+      validated: { label: "Validated (quality)",
+        fn: (a, b) => b.quality - a.quality },
+      exploratory: { label: "Exploratory (quality + fit + shape)",
+        fn: (a, b) => b.exploratory_total - a.exploratory_total },
+    }, "validated");
+  }
+  draw();
+
+  // ----- similarity strip
+  card.append(el("h3", { style: "margin:18px 0 4px" },
+    "Coaches who thrived with squads like this"),
+    el("p", { class: "chart-sub" },
+      "Descriptive only: coaches (≥4 big-5 stints, positive career residual) " +
+      "whose overperforming squads most resembled this one's player-type mix."));
+  const strip = el("div", { class: "sim-strip" });
+  for (const m of s.similar) {
+    strip.append(el("a", { class: "sim-card", href: `coach.html?id=${m.id}` },
+      coachImg(m.img, m.name),
+      el("div", {},
+        el("div", { class: "sim-name" }, m.name),
+        el("div", { class: "muted" },
+          `${Math.round(m.similarity * 100)}% similar · ` +
+          `${fmtSigned(m.mean_residual)} PPG over ${m.n_stints} stints`))));
+  }
+  card.append(strip);
+
+  card.append(el("p", { class: "footnote" },
+    "Suggestions model performance only — availability, wages, and contracts " +
+    "are not modeled (yes, this table will happily suggest hiring Guardiola). " +
+    "The quality score is validated out-of-sample on historical appointments; " +
+    "fit (player-type match) and shape (formation vs squad value) are " +
+    "exploratory layers that did not improve those forecasts. See the writeup."));
+
+  return card;
+}
+
+function badgeCell(c, s) {
+  const wrap = el("span", { class: "badge-cell" });
+  const badge = (txt, title) =>
+    el("span", { class: "badge-mini", title }, txt);
+  if (c.this_league) wrap.append(badge("league", "Has coached in this league"));
+  else if (c.this_country) wrap.append(badge("country", "Has coached in this country"));
+  if (c.big5) wrap.append(badge("big-5", "30+ games in the five major leagues"));
+  if (c.domestic) wrap.append(badge("domestic", "Same nationality as this club's country"));
+  if (c.club_level != null) {
+    wrap.append(el("span", { class: "muted",
+      title: "Career club level: squad-value percentile of the clubs coached " +
+             `(this club: ${s.team_level})` }, `lvl ${Math.round(c.club_level)}`));
+  }
+  if (c.last_season < s.active_since) {
+    wrap.append(el("span", { class: "badge-mini stale",
+      title: "Not seen in the dataset since this season" },
+      `last ${fmtSeason(c.last_season)}`));
+  }
+  return wrap;
 }
 
 function renderValueTrends(t) {

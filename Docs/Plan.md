@@ -260,6 +260,48 @@ Archetypes are validated and interpretable, squad composition measures are lagge
 
 ---
 
+## Coach Recommender ✓
+**Completed: July 13, 2026**
+
+Given a team's squad, rank candidate coaches — coach quality (M5 BLUPs) + shrunken
+coach × player-type fit slopes + a formation-based deployed-value forecast, with
+career-history plausibility filters and a descriptive similarity layer, embedded on
+each big-5 team page. Design: `Docs/Coach_Recommender_Design.md` (its §10 phase table
+is the granular plan; every gate was run and recorded). Implementation:
+`src/coach_recommender.R` (`cr_` prefix, pure cache/results reader).
+
+Phase outcomes (full record in `Docs/Session_Log_2026-07-13.md`):
+
+1. **Phase 0 sizing** — 22 formation strings cover all 36,022 team-matches; back-3 rose
+   10.7% → 36% over the decade; genuine two-striker shapes ≈ 33%. Fit axes revised once
+   pre-fit (destroyer/build-up correlated −0.87 → merged into a bipolar "spine" axis);
+   final axes: creators, spine, wing-back (max |r| = 0.47). ✓
+2. **Formation profiles** — recency decay δ = 0.3 chosen out-of-sample (interior
+   minimum); rigidity (entropy + cross-club persistence) with strong face validity
+   (Italiano 0.99, Klopp 0.91; Streich/Nicola/Galtier most adaptive). ✓
+3. **Deployed value** — archetype → slot eligibility with TM-position fallback;
+   greedy+swaps max-value XI. **Mechanical gate passed: fit → minutes share t = 26.9
+   beyond value; Spearman +0.52, positive in 316/316 arrival stints.** ✓
+4. **Random-slope fit model** — coach-specific slopes NOT significant (LRT χ² = 2.65,
+   df = 3, p = 0.449); wing-back slope variance → 0. Kept under shrinkage. ✓
+5. **Payoff validation (pre-registered)** — LOSO 2016–2024 on 785 new coach-club
+   pairings: quality BLUP ships (p = 0.052 pre-hire / **0.016 realized**); global
+   archetype effects neutral; fit + deployment a wash (−0.0003) → **exploratory only**,
+   per the acceptance rule. Closes the Part 4 limitation on the expanded era. ✓
+6. **Career facts** — leagues/countries coached, big-5 proven, club level (recency- and
+   games-weighted value percentile; Guardiola 100.0, Ferguson 98.9), recency,
+   nationality (TM profile scrape, resumable, prioritized to ranked coaches). ✓
+7. **Similarity layer** — residual-tilted composition profiles, cosine similarity;
+   self-similarity gate median 82nd percentile; City 2024/25 → Setién/Guardiola/
+   Pochettino/Rose/Arteta. ✓
+8. **Site** — `cr_save_results()` → `data/results/recommender.rds`; suggestions block
+   on all 96 latest-season big-5 team pages (validated ranking + exploratory columns +
+   filter chips + badges + similarity strip); non-big-5 clubs get an honest note.
+   Screenshot QA both themes + 375px; link sweep clean. ✓
+9. **Write-up** — `Summary_of_Findings.md` Part 7. ✓
+
+---
+
 ## Website ✓
 **Completed: July 10, 2026**
 

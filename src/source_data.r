@@ -453,6 +453,109 @@ xx_data_populate_coach_images <- function() {
   invisible(lookup)
 }
 
+# Returns a coach's citizenship(s) scraped from their Transfermarkt profile
+# page header ("Citizenship:" row). Multiple citizenships are comma-joined,
+# first listed = primary. Returns NULL if the page cannot be fetched (caller
+# should retry later), NA_character_ if the page loaded but has no citizenship
+# row (permanently missing). Added for the coach recommender's plausibility
+# filters (Docs/Coach_Recommender_Design.md sec. 6).
+xx_raw_coach_nationality <- function(coach_id) {
+  cat('## fetching nationality for', coach_id, '\n')
+  Sys.sleep(2)
+  page <- xx_fetch_page(coach_id)
+  if (is.null(page)) return(NULL)
+  # header row: <li class="data-header__label">Citizenship:
+  #   <span itemprop="nationality"><img class="flaggenrahmen" title="Spain">…
+  nat <- rvest::html_element(page, "span[itemprop='nationality']")
+  if (!inherits(nat, "xml_missing")) {
+    flags <- rvest::html_elements(nat, "img.flaggenrahmen")
+    titles <- rvest::html_attr(flags, "title")
+    titles <- titles[!is.na(titles) & nchar(trimws(titles)) > 0]
+    if (length(titles) > 0) return(paste(unique(trimws(titles)), collapse = ", "))
+    txt <- trimws(rvest::html_text(nat))
+    if (nchar(txt) > 0) return(txt)
+  }
+  # fallback: the profile info table has a "Citizenship:" <th> with flag <td>
+  ths <- rvest::html_elements(page, xpath = "//th[contains(text(), 'Citizenship')]")
+  if (length(ths) > 0) {
+    td <- xml2::xml_find_first(ths[[1]], "following-sibling::td")
+    if (!inherits(td, "xml_missing")) {
+      flags <- rvest::html_elements(td, "img.flaggenrahmen")
+      titles <- rvest::html_attr(flags, "title")
+      titles <- titles[!is.na(titles) & nchar(trimws(titles)) > 0]
+      if (length(titles) > 0) return(paste(unique(trimws(titles)), collapse = ", "))
+      txt <- trimws(rvest::html_text(td))
+      if (nchar(txt) > 0) return(txt)
+    }
+  }
+  cat('  WARNING: no citizenship row found\n')
+  NA_character_
+}
+
+# Scrapes citizenship for all unique coaches in the coaches cache that have
+# not yet been looked up. Mirrors xx_data_populate_coach_images(): a lookup
+# table at data/cache/coach_nationalities.rds with columns:
+#   coach_id    — Transfermarkt profile URL
+#   nationality — comma-joined citizenship(s), or NA if none found on the page
+#
+# Coaches already in the lookup (success or confirmed missing) are skipped;
+# page-fetch failures are not recorded and retry on the next call. Safe to
+# interrupt and re-run.
+#   priority_ids — optional coach_id vector scraped first (e.g. the ranked
+#     coaches the website shows), so partial runs cover the useful pool.
+#   max_failures / backoff_secs — TM intermittently 502s this page type;
+#     each failure backs off before retrying the run, and only a long streak
+#     aborts (progress is saved either way).
+xx_data_populate_coach_nationalities <- function(priority_ids = NULL,
+                                                 max_failures = 5,
+                                                 backoff_secs = 120) {
+  lookup_path <- "data/cache/coach_nationalities.rds"
+
+  if (file.exists(lookup_path)) {
+    lookup <- readRDS(lookup_path)
+  } else {
+    lookup <- data.frame(
+      coach_id    = character(),
+      nationality = character(),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  todo <- xx_data_cache$coaches |>
+    dplyr::distinct(coach_id) |>
+    dplyr::filter(!is.na(coach_id), nchar(coach_id) > 0) |>
+    dplyr::filter(!(coach_id %in% lookup$coach_id)) |>
+    dplyr::arrange(!(coach_id %in% priority_ids))
+
+  cat('## fetching nationality for', nrow(todo), 'coaches\n')
+
+  consecutive_failures <- 0
+  for (i in seq_len(nrow(todo))) {
+    cid <- todo$coach_id[i]
+    cat('[', i, '/', nrow(todo), '] ')
+    nat <- xx_raw_coach_nationality(cid)
+    # NULL = fetch failure (retry next run); NA = page loaded, no row (record)
+    if (is.null(nat)) {
+      consecutive_failures <- consecutive_failures + 1
+      if (consecutive_failures >= max_failures) {
+        cat('## aborting after', max_failures,
+            'consecutive failures; progress saved\n')
+        break
+      }
+      cat('  backing off', backoff_secs, 's after failure',
+          consecutive_failures, 'of', max_failures, '\n')
+      Sys.sleep(backoff_secs)
+      next
+    }
+    consecutive_failures <- 0
+    lookup <- rbind(lookup, data.frame(coach_id = cid, nationality = nat,
+                                       stringsAsFactors = FALSE))
+    saveRDS(lookup, lookup_path)
+  }
+
+  invisible(lookup)
+}
+
 # Downloads one club's crest to dest_path. Club crests live at a predictable
 # Transfermarkt CDN URL keyed by numeric club id (wappen/head/<id>.png,
 # verified 2026-07-10 — no page scrape needed; the club page header image is

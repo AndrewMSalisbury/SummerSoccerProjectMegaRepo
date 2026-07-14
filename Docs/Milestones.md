@@ -56,6 +56,13 @@ Unchosen direction (dropped for scope): **Player Development Score** — coach i
 
 ---
 
+## Coach Recommender ✓
+**Completed: July 13, 2026**
+
+"Who is the best coach *for this team*?" — a scoring system combining M5 coach quality, shrunken coach × player-type fit slopes (M6 axes), and a formation-based deployed-value forecast (recency-weighted formation profiles, rigidity, archetype → slot eligibility), plus career-history plausibility filters (league/country/big-5/club level/recency/nationality) and a descriptive "coaches who thrived with squads like this" similarity layer. Pre-registered payoff validation on 785 new coach-club pairings delivered the verdict: **coach quality is a validated out-of-sample hiring signal (p = 0.016, realized framing — also closing the Part 4 limitation); fit and deployment layers pass their mechanical checks (fit → minutes t = 26.9) but do not improve hiring forecasts and ship as clearly-labeled exploratory columns.** Suggestions live on all 96 latest-season big-5 team pages. Design: `Docs/Coach_Recommender_Design.md`; pipeline: `src/coach_recommender.R`; findings: `Summary_of_Findings.md` Part 7.
+
+---
+
 ## Website ✓
 **Completed: July 10, 2026**
 
