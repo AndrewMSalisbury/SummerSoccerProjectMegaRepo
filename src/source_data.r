@@ -656,6 +656,143 @@ xx_data_populate_team_crests <- function(club_ids = NULL) {
   invisible(lookup)
 }
 
+# Returns the URL of a player's profile headshot scraped from their
+# Transfermarkt page (same data-header element as coach profiles). Added for
+# the website team builder (Docs/Team_Builder_Design.md sec. 2.3). Returns
+# NULL if the page cannot be fetched (caller should retry later),
+# NA_character_ if the page loaded but shows no real photo (missing element
+# or the site-wide default-portrait placeholder — permanently missing).
+xx_raw_player_image_url <- function(player_id, sleep_secs = 2) {
+  cat('## fetching player image URL for', player_id, '\n')
+  Sys.sleep(sleep_secs)
+  page <- xx_fetch_page(player_id)
+  if (is.null(page)) return(NULL)
+  img <- rvest::html_element(page, "img.data-header__profile-image")
+  if (inherits(img, "xml_missing")) {
+    cat('  WARNING: no profile image element found\n')
+    return(NA_character_)
+  }
+  src <- rvest::html_attr(img, "src")
+  if (is.na(src) || nchar(trimws(src)) == 0) return(NA_character_)
+  # players without a licensed photo get a shared placeholder portrait —
+  # record those as missing rather than downloading the same file thousands
+  # of times (the frontend has its own initials fallback)
+  if (grepl("default", src, ignore.case = TRUE)) {
+    cat('  placeholder portrait — recording as missing\n')
+    return(NA_character_)
+  }
+  src
+}
+
+# Downloads profile photos for the given players (Transfermarkt profile URLs),
+# in the order given — pass a priority-sorted vector so an interrupted run
+# covers the most-searched players first. Images are saved to
+# data/images/players/ named by the player's Transfermarkt numeric ID.
+#
+# Mirrors xx_data_populate_coach_nationalities()'s resume semantics (the
+# NULL/NA split the coach-image scraper predates): a lookup table at
+# data/cache/player_images.rds with columns:
+#   player_id  — Transfermarkt profile URL
+#   local_path — relative path to the saved image, or NA if confirmed no photo
+#
+# Players already in the lookup are skipped; page-fetch and download failures
+# are not recorded and retry on the next call. TM intermittently 502s profile
+# pages: each fetch failure backs off before continuing, and only a streak of
+# max_failures aborts (progress saved either way). Safe to interrupt & re-run.
+xx_data_populate_player_images <- function(player_ids,
+                                           sleep_secs = 2,
+                                           max_failures = 5,
+                                           backoff_secs = 120) {
+  images_dir  <- "data/images/players"
+  lookup_path <- "data/cache/player_images.rds"
+  dir.create(images_dir, recursive = TRUE, showWarnings = FALSE)
+
+  if (file.exists(lookup_path)) {
+    lookup <- readRDS(lookup_path)
+  } else {
+    lookup <- data.frame(
+      player_id  = character(),
+      local_path = character(),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  todo <- player_ids[!is.na(player_ids) & nchar(player_ids) > 0]
+  todo <- unique(todo)
+  todo <- todo[!(todo %in% lookup$player_id)]
+
+  cat('## downloading photos for', length(todo), 'players\n')
+
+  consecutive_failures <- 0
+  for (i in seq_along(todo)) {
+    pid <- todo[i]
+    cat('[', i, '/', length(todo), '] ')
+
+    img_url <- xx_raw_player_image_url(pid, sleep_secs = sleep_secs)
+
+    # NULL = fetch failure (retry next run, with backoff); NA = confirmed none
+    if (is.null(img_url)) {
+      consecutive_failures <- consecutive_failures + 1
+      if (consecutive_failures >= max_failures) {
+        cat('## aborting after', max_failures,
+            'consecutive failures; progress saved\n')
+        break
+      }
+      cat('  backing off', backoff_secs, 's after failure',
+          consecutive_failures, 'of', max_failures, '\n')
+      Sys.sleep(backoff_secs)
+      next
+    }
+    consecutive_failures <- 0
+
+    if (is.na(img_url)) {
+      lookup <- rbind(lookup, data.frame(player_id = pid,
+                                         local_path = NA_character_,
+                                         stringsAsFactors = FALSE))
+      saveRDS(lookup, lookup_path)
+      next
+    }
+
+    numeric_id <- stringr::str_extract(pid, "(?<=/spieler/)\\d+")
+    if (is.na(numeric_id)) {
+      cat('  WARNING: no numeric id in', pid, '— skipping\n')
+      next
+    }
+    ext <- tools::file_ext(httr::parse_url(img_url)$path)
+    if (nchar(ext) == 0) ext <- "jpg"
+    local_path <- file.path(images_dir, paste0(numeric_id, ".", ext))
+
+    tryCatch({
+      resp <- httr::GET(
+        img_url,
+        httr::add_headers(
+          `referer`    = "https://www.transfermarkt.com/",
+          `user-agent` = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+          `cookie`     = .TM_COOKIE
+        ),
+        httr::write_disk(local_path, overwrite = TRUE)
+      )
+      if (!httr::http_error(resp) && isTRUE(file.size(local_path) >= 100)) {
+        cat('  saved:', local_path, '\n')
+        lookup <- rbind(lookup, data.frame(player_id = pid,
+                                           local_path = local_path,
+                                           stringsAsFactors = FALSE))
+        saveRDS(lookup, lookup_path)
+      } else {
+        unlink(local_path)
+        cat('  HTTP', httr::status_code(resp),
+            'or empty body downloading photo — will retry next run\n')
+      }
+    }, error = function(e) {
+      unlink(local_path)
+      cat('  ERROR downloading photo:', conditionMessage(e),
+          '— will retry next run\n')
+    })
+  }
+
+  invisible(lookup)
+}
+
 # Compute team points given a set of matches.
 xx_team_points <- function(matches) {
   if (nrow(matches) == 0) {

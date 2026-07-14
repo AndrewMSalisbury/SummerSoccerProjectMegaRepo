@@ -110,10 +110,15 @@ validate_coach_coverage <- function(coach_residuals_tbl, residuals_tbl) {
 }
 
 # Aggregates coach-stint table to one row per coach.
-# Each stint is one observation — unweighted by games — so mean and SD feed
-# directly into the per-coach t-test in the significance step.
+# Stints are games-weighted (2026-07-14, matching the mixed model): a 2-game
+# caretaker spell should not count like a full season. Under the model's
+# variance assumption Var(stint residual) = sigma2_game / n_games, the
+# games-weighted mean is the minimum-variance estimate and its standard error
+# is sqrt(sigma2_game / total_games), with sigma2_game estimated from the
+# games-weighted squared deviations on n_stints - 1 df. sd_residual is the
+# games-weighted SD of stint residuals (display only).
 # n_clubs counts distinct clubs (Transfermarkt club URL, season stripped).
-# sd_residual is NA for coaches with only one stint.
+# sd_residual and se_residual are NA for coaches with only one stint.
 compute_coach_stats <- function(coach_residuals_tbl, min_games = 10, min_stints = 1) {
   stats <- coach_residuals_tbl |>
     filter(!is.na(partial_residual_ppg)) |>
@@ -122,11 +127,16 @@ compute_coach_stats <- function(coach_residuals_tbl, min_games = 10, min_stints 
       n_stints      = n(),
       total_games   = sum(n_games),
       n_clubs       = n_distinct(sub("/saison_id/\\d+", "", team_season_id)),
-      mean_residual = mean(partial_residual_ppg),
-      sd_residual   = sd(partial_residual_ppg),
+      mean_residual = weighted.mean(partial_residual_ppg, n_games),
+      sigma2_game   = sum(n_games * (partial_residual_ppg - mean_residual)^2) /
+                        ifelse(n_stints > 1, n_stints - 1, NA_real_),
+      sd_residual   = sqrt(sum(n_games * (partial_residual_ppg - mean_residual)^2) /
+                             total_games * n_stints /
+                             ifelse(n_stints > 1, n_stints - 1, NA_real_)),
       .groups       = "drop"
     ) |>
-    mutate(se_residual = sd_residual / sqrt(n_stints)) |>
+    mutate(se_residual = sqrt(sigma2_game / total_games)) |>
+    select(-sigma2_game) |>
     filter(total_games >= min_games, n_stints >= min_stints) |>
     arrange(desc(mean_residual))
 
@@ -155,16 +165,21 @@ compute_coach_stats <- function(coach_residuals_tbl, min_games = 10, min_stints 
 }
 
 # Adds significance columns to a coach_stats table.
-# Uses a one-sample t-test (H0: mean_residual = 0) computed analytically from
-# the summary stats already in coach_stats — equivalent to t.test() on raw stints.
-# Coaches with n_stints < 2 cannot be tested and receive NA for all test columns.
+# One-sample t-test (H0: mean_residual = 0) from the summary stats already in
+# coach_stats. With the games-weighted mean/SE this is a weighted one-sample
+# t-test on n_stints - 1 df (the unweighted version was equivalent to t.test()
+# on raw stints).
+# Coaches with n_stints < 3 cannot be tested and receive NA for all test
+# columns: on df = 1 the SE estimate can collapse to ~0 when a coach's two
+# stints agree by luck, producing absurd significance claims; requiring 3+
+# stints (df >= 2) matches the mixed model's min_stints convention.
 # p_adj is Benjamini-Hochberg FDR correction across all testable coaches.
 add_significance <- function(coach_stats, alpha = 0.05) {
   result <- coach_stats |>
     mutate(
       t_stat   = mean_residual / se_residual,
       df       = n_stints - 1,
-      untestable = n_stints < 2 | is.na(se_residual) | se_residual == 0,
+      untestable = n_stints < 3 | is.na(se_residual) | se_residual == 0,
       p_value  = if_else(untestable, NA_real_, 2 * pt(-abs(t_stat), df = df)),
       ci_lower = if_else(untestable, NA_real_, mean_residual - qt(0.975, df = pmax(df, 1)) * se_residual),
       ci_upper = if_else(untestable, NA_real_, mean_residual + qt(0.975, df = pmax(df, 1)) * se_residual)
@@ -181,7 +196,7 @@ add_significance <- function(coach_stats, alpha = 0.05) {
   n_significant <- sum(result$significant, na.rm = TRUE)
 
   cat("=== Significance Testing (FDR alpha =", alpha, ") ===\n")
-  cat("Coaches tested (n_stints >= 2): ", n_testable, "\n")
+  cat("Coaches tested (n_stints >= 3): ", n_testable, "\n")
   cat("Significant after FDR:          ", n_significant, "\n\n")
 
   sig <- result |>

@@ -45,8 +45,18 @@ of performance (sackings), inflating coaches whose disasters were truncated.
   header comment documents the rationale and the selection-tilt caveat.
 - Regenerated `coach_blups_top5.rds`, `coach_blups_14league.rds`,
   `coach_grades_top5.rds`, `coach_grades_14league.rds`
-  (scratchpad `refit_m5_weighted.R`). `coach_ranked_*.rds` untouched — the
-  per-coach descriptive t-tests remain unweighted by design.
+  (scratchpad `refit_m5_weighted.R`).
+- Follow-up (same day, after Andrew flagged the inconsistency): the per-coach
+  descriptive stats and t-tests were weighted the same way.
+  `compute_coach_stats()` now uses the games-weighted mean with
+  SE = √(σ̂²_game / total_games) (σ̂²_game from games-weighted squared
+  deviations on n_stints − 1 df), and `add_significance()` requires ≥ 3 stints
+  to test — on df = 1 the SE can collapse to ~0 when a coach's two stints agree
+  by luck (Mark Wotte, 2 stints, would have shipped as "significantly bad").
+  `coach_ranked_*.rds` regenerated: significant-after-FDR is now Ferguson,
+  Guardiola, Conte, Xavi (top-5) and Ferguson, Guardiola, Marek Papszun, Xavi
+  (all leagues). The recommender similar-pool means (`mean_res_b5`) were
+  already games-weighted from the start.
 - `coach_recommender.R` `cr_build_scorer()` / `cr_score_team()`: published
   variance components updated (top5 coach 0.0038 / residual 1.7683 per game;
   14-league 0.0030 / 1.8143) and the quality posterior SD now uses
@@ -72,9 +82,9 @@ curve re-centres automatically (mean 75 / sd 10 on the new BLUP distribution).
 
 ## Loose ends
 
-- Coach nationality scrape still running in the background (~888 of 3,536
-  remaining at session start); on completion re-run `cr_save_results()` +
-  `export_site_data()` and commit the cache.
+- Coach nationality scrape **completed** during the session: 3,533 coaches in
+  `data/cache/coach_nationalities.rds`, 0 NA. `recommender.rds` and the site
+  were regenerated afterward, so all domestic/country badges are final.
 - Documented limitation kept: no reweighting fully removes informative
   censoring (sacked-early stints); the complete fix would be a match-level
   model with coach × stint random effects.
