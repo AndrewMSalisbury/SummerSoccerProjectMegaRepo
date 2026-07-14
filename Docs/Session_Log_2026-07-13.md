@@ -153,6 +153,19 @@ clubs already hire for fit, so realized appointments understate the fit signal.
   resolves, 0 problems. (Missing avatars in one screenshot were `loading="lazy"`
   below-fold images, not data gaps — JSON verified.)
 
+### Post-review restructure (same day, Andrew's direction)
+
+Andrew judged the similarity layer the most useful, team-specific content, so the
+card was restructured: **"coaches who excelled with squads like this" is now the
+dominant graphic** — a grid of eight large cards (photo, name, grade chip with cut
+label, rank-scaled similarity meter, % match + career residual + stints) — with the
+validated-quality candidate table demoted below it under "All candidates by
+validated quality" (chips, exploratory columns, and sort toggle unchanged). The
+exporter now ships each similar coach's grade (`se_suggestions()`); honesty labels
+unchanged (headline cards explicitly descriptive; quality remains the only
+validated score). Verified by screenshot: City and Atalanta now lead with visibly
+different coach sets (Setién/Guardiola/Pochettino vs Fischer/Ballardini/Machín).
+
 ## Part 3: Nationality scrape (`source_data.r`)
 
 - `xx_raw_coach_nationality()` (header `span[itemprop='nationality']`, flag titles,

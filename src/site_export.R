@@ -350,14 +350,19 @@ se_suggestions <- function(d, team_season_ids) {
   })
 
   sim <- entry$similar
-  similar <- lapply(seq_len(nrow(sim)), function(i) list(
-    id         = as.integer(se_coach_num(sim$coach_id[i])),
-    name       = sim$coach_name[i],
-    img        = unname(d$img_map[sim$coach_id[i]]),
-    similarity = se_num(sim$similarity[i], 3),
-    n_stints   = sim$n_stints_b5[i],
-    mean_residual = se_num(sim$mean_res_b5[i], 3)
-  ))
+  similar <- lapply(seq_len(nrow(sim)), function(i) {
+    rating <- se_rating(d, sim$coach_id[i])
+    list(
+      id         = as.integer(se_coach_num(sim$coach_id[i])),
+      name       = sim$coach_name[i],
+      img        = unname(d$img_map[sim$coach_id[i]]),
+      similarity = se_num(sim$similarity[i], 3),
+      n_stints   = sim$n_stints_b5[i],
+      mean_residual = se_num(sim$mean_res_b5[i], 3),
+      grade = if (is.null(rating)) NULL else list(
+        letter = rating$letter_grade, cut_label = rating$cut_label)
+    )
+  })
 
   list(
     season       = entry$season,

@@ -178,11 +178,46 @@ function renderSuggestions(t) {
     el("div", { class: "chart-title" },
       `Suggested coaches — ${fmtSeason(s.season)} squad`),
     el("div", { class: "chart-sub" },
-      "Ranked by the validated quality score: each coach's shrinkage-adjusted " +
-      "career overperformance (points per game above squad-value expectation, " +
-      "vs a league-average coach). Fit and shape columns are exploratory — " +
-      "they describe this squad specifically but did not improve out-of-sample " +
-      "forecasts. Use the chips to filter by career plausibility."));
+      "Coaches who excelled with squads like this one, matched on the " +
+      "player-type mix of their overperforming stints (descriptive). The full " +
+      "candidate table, ranked by the validated quality score, follows below."));
+
+  // ----- headline graphic: coaches who thrived with similar squads
+  const grid = el("div", { class: "sim-grid" });
+  const simMax = Math.max(...s.similar.map(m => m.similarity));
+  const simMin = Math.min(...s.similar.map(m => m.similarity));
+  s.similar.forEach((m, i) => {
+    const span = Math.max(simMax - simMin, 0.001);
+    const width = 25 + 75 * (m.similarity - simMin) / span;   // rank-scaled meter
+    grid.append(el("a", { class: "sim-card-lg", href: `coach.html?id=${m.id}` },
+      el("span", { class: "sim-rank" }, String(i + 1)),
+      coachImg(m.img, m.name, "sim-photo"),
+      el("div", { class: "sim-body" },
+        el("div", { class: "sim-name" }, m.name,
+          m.grade ? el("span", { title: `${m.grade.cut_label} cut` },
+            el("span", {
+              class: "grade-chip" + gradeTier(m.grade.letter),
+              style: "margin-left:6px",
+            }, m.grade.letter),
+            el("span", { class: "muted", style: "font-weight:400" },
+              ` ${m.grade.cut_label === "Top-5 leagues" ? "T5" : "All"}`)) : null),
+        el("div", { class: "sim-meter", title:
+          `${Math.round(m.similarity * 100)}% squad-mix similarity` },
+          el("span", { style: `width:${width}%` })),
+        el("div", { class: "muted" },
+          `${Math.round(m.similarity * 100)}% match · ` +
+          `${fmtSigned(m.mean_residual)} PPG over ${m.n_stints} big-5 stints`))));
+  });
+  card.append(grid);
+
+  card.append(el("h3", { style: "margin:20px 0 4px" },
+    "All candidates by validated quality"),
+    el("p", { class: "chart-sub" },
+      "Each coach's shrinkage-adjusted career overperformance (points per game " +
+      "above squad-value expectation, vs a league-average coach). Fit and shape " +
+      "columns are exploratory — they describe this squad specifically but did " +
+      "not improve out-of-sample forecasts. Use the chips to filter by career " +
+      "plausibility."));
 
   // ----- filter chips
   const filters = {
@@ -252,30 +287,14 @@ function renderSuggestions(t) {
   }
   draw();
 
-  // ----- similarity strip
-  card.append(el("h3", { style: "margin:18px 0 4px" },
-    "Coaches who thrived with squads like this"),
-    el("p", { class: "chart-sub" },
-      "Descriptive only: coaches (≥4 big-5 stints, positive career residual) " +
-      "whose overperforming squads most resembled this one's player-type mix."));
-  const strip = el("div", { class: "sim-strip" });
-  for (const m of s.similar) {
-    strip.append(el("a", { class: "sim-card", href: `coach.html?id=${m.id}` },
-      coachImg(m.img, m.name),
-      el("div", {},
-        el("div", { class: "sim-name" }, m.name),
-        el("div", { class: "muted" },
-          `${Math.round(m.similarity * 100)}% similar · ` +
-          `${fmtSigned(m.mean_residual)} PPG over ${m.n_stints} stints`))));
-  }
-  card.append(strip);
-
   card.append(el("p", { class: "footnote" },
-    "Suggestions model performance only — availability, wages, and contracts " +
-    "are not modeled (yes, this table will happily suggest hiring Guardiola). " +
-    "The quality score is validated out-of-sample on historical appointments; " +
-    "fit (player-type match) and shape (formation vs squad value) are " +
-    "exploratory layers that did not improve those forecasts. See the writeup."));
+    "The headline cards are descriptive: coaches with ≥4 big-5 stints and a " +
+    "positive career residual, matched on player-type mix — a judgment aid, " +
+    "not a prediction. The quality score is validated out-of-sample on " +
+    "historical appointments; fit (player-type match) and shape (formation vs " +
+    "squad value) are exploratory layers that did not improve those forecasts. " +
+    "Availability, wages, and contracts are not modeled (yes, this page will " +
+    "happily suggest hiring Guardiola). See the writeup."));
 
   return card;
 }
