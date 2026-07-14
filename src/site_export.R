@@ -301,10 +301,29 @@ se_league_countries <- c(
   "1-hnl" = "Croatia",              "super-lig" = "Turkey"
 )
 
+# plausibility badges for one coach, precomputed against a target team
+se_coach_badges <- function(d, coach_id, team_slug, team_country) {
+  f <- d$rec$facts_by_coach[[coach_id]]
+  nat <- if (!is.null(f) && !is.na(f$nationality)) {
+    strsplit(f$nationality, ", ")[[1]][1]
+  } else NULL
+  list(
+    this_league  = !is.null(f) && team_slug %in% f$leagues[[1]],
+    this_country = !is.null(f) && !is.null(team_country) &&
+                     team_country %in% f$countries[[1]],
+    big5         = !is.null(f) && f$big5_games >= 30,
+    club_level   = if (!is.null(f)) se_num(f$club_level, 1) else NULL,
+    last_season  = if (!is.null(f)) f$last_season else NULL,
+    domestic     = !is.null(nat) && !is.null(team_country) &&
+                     nat == team_country
+  )
+}
+
 # Builds the team page's suggested-coaches block from recommender.rds, or NULL
-# when the club has no scored latest-season big-5 squad. Ranking is by the
-# validated quality score (payoff rule 2026-07-13); fit/deployment ship as
-# exploratory columns.
+# when the club has no scored latest-season big-5 squad. The site leads with
+# the similarity list (Andrew's direction 2026-07-13, second revision) and
+# currently hides the validated-quality table; the `coaches` array is still
+# exported so restoring that view is frontend-only.
 se_suggestions <- function(d, team_season_ids) {
   if (is.null(d$rec)) return(NULL)
   ts <- intersect(team_season_ids, names(d$rec$teams))
@@ -318,11 +337,7 @@ se_suggestions <- function(d, team_season_ids) {
   s <- entry$suggestions
   coaches <- lapply(seq_len(nrow(s)), function(i) {
     r <- s[i, ]
-    f <- d$rec$facts_by_coach[[r$coach_id]]
-    nat <- if (!is.null(f) && !is.na(f$nationality)) {
-      strsplit(f$nationality, ", ")[[1]][1]
-    } else NULL
-    list(
+    c(list(
       id            = as.integer(se_coach_num(r$coach_id)),
       name          = r$coach_name,
       img           = unname(d$img_map[r$coach_id]),
@@ -336,23 +351,14 @@ se_suggestions <- function(d, team_season_ids) {
       deployment    = se_num(r$deployment, 4),
       exploratory_total = se_num(r$uplift_ppg, 4),
       lo            = se_num(r$lo, 3),
-      hi            = se_num(r$hi, 3),
-      # plausibility badges, precomputed against this team
-      this_league   = !is.null(f) && team_slug %in% f$leagues[[1]],
-      this_country  = !is.null(f) && !is.null(team_country) &&
-                        team_country %in% f$countries[[1]],
-      big5          = !is.null(f) && f$big5_games >= 30,
-      club_level    = if (!is.null(f)) se_num(f$club_level, 1) else NULL,
-      last_season   = if (!is.null(f)) f$last_season else NULL,
-      domestic      = !is.null(nat) && !is.null(team_country) &&
-                        nat == team_country
-    )
+      hi            = se_num(r$hi, 3)
+    ), se_coach_badges(d, r$coach_id, team_slug, team_country))
   })
 
   sim <- entry$similar
   similar <- lapply(seq_len(nrow(sim)), function(i) {
     rating <- se_rating(d, sim$coach_id[i])
-    list(
+    c(list(
       id         = as.integer(se_coach_num(sim$coach_id[i])),
       name       = sim$coach_name[i],
       img        = unname(d$img_map[sim$coach_id[i]]),
@@ -361,7 +367,7 @@ se_suggestions <- function(d, team_season_ids) {
       mean_residual = se_num(sim$mean_res_b5[i], 3),
       grade = if (is.null(rating)) NULL else list(
         letter = rating$letter_grade, cut_label = rating$cut_label)
-    )
+    ), se_coach_badges(d, sim$coach_id[i], team_slug, team_country))
   })
 
   list(

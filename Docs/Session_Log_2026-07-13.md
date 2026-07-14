@@ -153,18 +153,26 @@ clubs already hire for fit, so realized appointments understate the fit signal.
   resolves, 0 problems. (Missing avatars in one screenshot were `loading="lazy"`
   below-fold images, not data gaps — JSON verified.)
 
-### Post-review restructure (same day, Andrew's direction)
+### Post-review restructure (same day, Andrew's direction — two revisions)
 
-Andrew judged the similarity layer the most useful, team-specific content, so the
-card was restructured: **"coaches who excelled with squads like this" is now the
-dominant graphic** — a grid of eight large cards (photo, name, grade chip with cut
-label, rank-scaled similarity meter, % match + career residual + stints) — with the
-validated-quality candidate table demoted below it under "All candidates by
-validated quality" (chips, exploratory columns, and sort toggle unchanged). The
-exporter now ships each similar coach's grade (`se_suggestions()`); honesty labels
-unchanged (headline cards explicitly descriptive; quality remains the only
-validated score). Verified by screenshot: City and Atalanta now lead with visibly
-different coach sets (Setién/Guardiola/Pochettino vs Fischer/Ballardini/Machín).
+**Revision 1:** Andrew judged the similarity layer the most useful, team-specific
+content, so it became the card's dominant graphic — a grid of large cards (photo,
+name, grade chip with cut label, rank-scaled similarity meter, % match + career
+residual + stints) — with the validated-quality candidate table demoted below it.
+
+**Revision 2:** Andrew wasn't convinced the quality table adds much on a team page
+(its order is team-independent), so the card is now **similarity-only**: the
+plausibility chips moved onto the similarity grid, which shows the 9 closest
+matches *of the filtered pool* — a filter backfills with coaches who weren't in
+the unfiltered nine (City + "This country" surfaces Ancelotti/Pellegrini/Conte/
+Koeman; + "Domestic" honestly leaves only Howe and Dyche). To support this the
+export ships the **full qualifying pool** (~81 coaches per team: ≥4 big-5 stints,
+positive career residual, ranked by similarity) with per-team badge fields
+(`se_coach_badges()` helper). The validated-quality table is hidden but its data
+still ships in the JSON (`suggestions.coaches`) and the code documents why —
+restoring it is frontend-only. The footnote now points to the leaderboard as the
+home of the validated ranking. Verified by live chromote click-tests and
+screenshots; each card carries its badges so filter pass/fail reasons are visible.
 
 ## Part 3: Nationality scrape (`source_data.r`)
 

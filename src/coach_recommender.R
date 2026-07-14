@@ -1150,8 +1150,9 @@ cr_save_results <- function(scorer, payoff_folds, n_top = 60,
       if (is.null(sc)) next
       top <- sc |> arrange(desc(quality)) |> head(n_top) |>
         mutate(headline_rank = row_number())
+      # full qualifying pool (not a head-N cut): the site filters this list
+      # client-side, so it needs depth to survive the plausibility chips
       sim <- cr_similar_coaches(thriving, attr(sc, "shares"), min_stints = 4) |>
-        head(8) |>
         left_join(perf, by = "coach_id")
       team_rows[[ts]] <- list(
         team_season_id = ts, league_key = lg, season = season,

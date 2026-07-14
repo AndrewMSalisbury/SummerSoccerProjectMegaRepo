@@ -172,51 +172,14 @@ function renderSuggestionsNote() {
 
 function renderSuggestions(t) {
   const s = t.suggestions;
-  const games = (t.seasons.find(x => x.season === s.season) || {}).games || 38;
 
   const card = el("div", { class: "chart-card suggest-card" },
     el("div", { class: "chart-title" },
       `Suggested coaches — ${fmtSeason(s.season)} squad`),
     el("div", { class: "chart-sub" },
-      "Coaches who excelled with squads like this one, matched on the " +
-      "player-type mix of their overperforming stints (descriptive). The full " +
-      "candidate table, ranked by the validated quality score, follows below."));
-
-  // ----- headline graphic: coaches who thrived with similar squads
-  const grid = el("div", { class: "sim-grid" });
-  const simMax = Math.max(...s.similar.map(m => m.similarity));
-  const simMin = Math.min(...s.similar.map(m => m.similarity));
-  s.similar.forEach((m, i) => {
-    const span = Math.max(simMax - simMin, 0.001);
-    const width = 25 + 75 * (m.similarity - simMin) / span;   // rank-scaled meter
-    grid.append(el("a", { class: "sim-card-lg", href: `coach.html?id=${m.id}` },
-      el("span", { class: "sim-rank" }, String(i + 1)),
-      coachImg(m.img, m.name, "sim-photo"),
-      el("div", { class: "sim-body" },
-        el("div", { class: "sim-name" }, m.name,
-          m.grade ? el("span", { title: `${m.grade.cut_label} cut` },
-            el("span", {
-              class: "grade-chip" + gradeTier(m.grade.letter),
-              style: "margin-left:6px",
-            }, m.grade.letter),
-            el("span", { class: "muted", style: "font-weight:400" },
-              ` ${m.grade.cut_label === "Top-5 leagues" ? "T5" : "All"}`)) : null),
-        el("div", { class: "sim-meter", title:
-          `${Math.round(m.similarity * 100)}% squad-mix similarity` },
-          el("span", { style: `width:${width}%` })),
-        el("div", { class: "muted" },
-          `${Math.round(m.similarity * 100)}% match · ` +
-          `${fmtSigned(m.mean_residual)} PPG over ${m.n_stints} big-5 stints`))));
-  });
-  card.append(grid);
-
-  card.append(el("h3", { style: "margin:20px 0 4px" },
-    "All candidates by validated quality"),
-    el("p", { class: "chart-sub" },
-      "Each coach's shrinkage-adjusted career overperformance (points per game " +
-      "above squad-value expectation, vs a league-average coach). Fit and shape " +
-      "columns are exploratory — they describe this squad specifically but did " +
-      "not improve out-of-sample forecasts. Use the chips to filter by career " +
+      "Coaches who excelled with squads like this one — matched on the " +
+      "player-type mix of their overperforming big-5 stints (descriptive: a " +
+      "judgment aid, not a prediction). Use the chips to filter by career " +
       "plausibility."));
 
   // ----- filter chips
@@ -240,59 +203,66 @@ function renderSuggestions(t) {
   }
   card.append(chipRow);
 
-  // ----- table
-  const host = el("div", { class: "suggest-wrap" });
-  card.append(host);
-
-  const pts = v => `${fmtSigned(v * games, 1)} pts`;
-  const explCell = v => el("span", { class: "muted" },
-    v === 0 ? "—" : `${fmtSigned(v)} (${fmtSigned(v * games, 1)})`);
-
-  const cols = [
-    { label: "Coach", render: c => el("a", { class: "cell-entity",
-        href: `coach.html?id=${c.id}` }, coachImg(c.img, c.name), c.name) },
-    { label: "Grade", render: c => el("span",
-        { title: `Rank ${c.grade.rank} — ${c.grade.cut_label} cut` },
-        el("span", { class: "grade-chip" + gradeTier(c.grade.letter) },
-          c.grade.letter),
-        el("span", { class: "muted" },
-          ` ${c.grade.cut_label === "Top-5 leagues" ? "T5" : "All"}`)) },
-    { label: "Quality (validated)", cls: "num", render: c =>
-        el("span", { class: c.quality >= 0 ? "delta-pos" : "delta-neg",
-          title: `${fmtSigned(c.quality)} PPG vs an average coach; 95% interval ` +
-                 `${fmtSigned(c.lo)} to ${fmtSigned(c.hi)} PPG on the full score` },
-          pts(c.quality)) },
-    { label: "Fit (exploratory)", cls: "num", render: c =>
-        c.tier === "full" ? explCell(c.fit) : el("span", { class: "muted" }, "n/a") },
-    { label: "Shape (exploratory)", cls: "num", render: c =>
-        c.tier === "full" ? explCell(c.deployment) : el("span", { class: "muted" }, "n/a") },
-    { label: "Career", render: c => badgeCell(c, s) },
-  ];
+  // ----- similarity grid (the card's content; redrawn on every chip toggle)
+  const gridHost = el("div", {});
+  card.append(gridHost);
+  const MAX_CARDS = 9;
 
   function draw() {
-    clear(host);
-    const rows = s.coaches.filter(c =>
+    clear(gridHost);
+    const rows = s.similar.filter(c =>
       Object.values(filters).every(f => !f.on || f.test(c)));
     if (!rows.length) {
-      host.append(el("p", { class: "footnote" },
-        "No suggested coaches match the active filters."));
+      gridHost.append(el("p", { class: "footnote" },
+        "No coaches match the active filters."));
       return;
     }
-    sortableTable(host, rows, cols, {
-      validated: { label: "Validated (quality)",
-        fn: (a, b) => b.quality - a.quality },
-      exploratory: { label: "Exploratory (quality + fit + shape)",
-        fn: (a, b) => b.exploratory_total - a.exploratory_total },
-    }, "validated");
+    const shown = rows.slice(0, MAX_CARDS);
+    const simMax = Math.max(...shown.map(m => m.similarity));
+    const simMin = Math.min(...shown.map(m => m.similarity));
+    const span = Math.max(simMax - simMin, 0.001);
+    const grid = el("div", { class: "sim-grid" });
+    shown.forEach((m, i) => {
+      const width = 25 + 75 * (m.similarity - simMin) / span; // rank-scaled meter
+      grid.append(el("a", { class: "sim-card-lg", href: `coach.html?id=${m.id}` },
+        el("span", { class: "sim-rank" }, String(i + 1)),
+        coachImg(m.img, m.name, "sim-photo"),
+        el("div", { class: "sim-body" },
+          el("div", { class: "sim-name" }, m.name,
+            m.grade ? el("span", { title: `${m.grade.cut_label} cut` },
+              el("span", {
+                class: "grade-chip" + gradeTier(m.grade.letter),
+                style: "margin-left:6px",
+              }, m.grade.letter),
+              el("span", { class: "muted", style: "font-weight:400" },
+                ` ${m.grade.cut_label === "Top-5 leagues" ? "T5" : "All"}`)) : null),
+          el("div", { class: "sim-meter", title:
+            `${Math.round(m.similarity * 100)}% squad-mix similarity` },
+            el("span", { style: `width:${width}%` })),
+          el("div", { class: "muted" },
+            `${Math.round(m.similarity * 100)}% match · ` +
+            `${fmtSigned(m.mean_residual)} PPG over ${m.n_stints} big-5 stints`),
+          badgeCell(m, s))));
+    });
+    gridHost.append(grid);
+    if (rows.length > MAX_CARDS) {
+      gridHost.append(el("p", { class: "footnote" },
+        `Showing the ${MAX_CARDS} closest matches of the ${rows.length} ` +
+        "coaches that pass the filters."));
+    }
   }
   draw();
 
+  // The validated-quality candidate table is intentionally not rendered
+  // (2026-07-13, second revision — Andrew wasn't convinced it adds much on a
+  // team page, since its order is team-independent). The data still ships in
+  // t.suggestions.coaches, so restoring it is a frontend-only change.
+
   card.append(el("p", { class: "footnote" },
-    "The headline cards are descriptive: coaches with ≥4 big-5 stints and a " +
-    "positive career residual, matched on player-type mix — a judgment aid, " +
-    "not a prediction. The quality score is validated out-of-sample on " +
-    "historical appointments; fit (player-type match) and shape (formation vs " +
-    "squad value) are exploratory layers that did not improve those forecasts. " +
+    "Similarity is descriptive — coaches with ≥4 big-5 stints and a positive " +
+    "career residual, matched on the player-type mix of their overperforming " +
+    "squads. It is a judgment aid, not a validated prediction; the model's " +
+    "out-of-sample-tested coach quality ranking is on the leaderboard. " +
     "Availability, wages, and contracts are not modeled (yes, this page will " +
     "happily suggest hiring Guardiola). See the writeup."));
 

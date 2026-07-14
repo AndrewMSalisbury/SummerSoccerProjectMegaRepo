@@ -790,3 +790,5 @@ table.data img.mini.face { object-fit: cover; border-radius: 50%; }
 }
 
 .sim-body .muted { font-size: 12px; }
+
+.sim-body .badge-cell { margin-top: 6px; }
