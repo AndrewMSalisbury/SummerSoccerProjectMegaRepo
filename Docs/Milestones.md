@@ -63,6 +63,13 @@ Unchosen direction (dropped for scope): **Player Development Score** — coach i
 
 ---
 
+## Team Builder ✓
+**Completed: July 14, 2026**
+
+A site page (`site/builder.html`) where the user assembles a custom XI — any of the 22 observed formations drawn on an SVG pitch, click-a-circle player picking from all 5,570 big-5 players (17k+ player-seasons, 2015/16–2024/25, cross-era teams allowed), eligibility from the recommender's validated archetype→slot matrix (Natural/Capable/Stretch tiers) — and gets the team-page coach-similarity grid computed in the browser against the built XI (verified numerically identical to the R implementation). Plausibility chips work through an optional league-context selector; builds serialize into the URL. Player headshots come from a new resumable TM scrape. Deliberately shows no predicted points for fantasy XIs (outside the M3 model's support); the similarity grid keeps its descriptive labeling. Design: `Docs/Team_Builder_Design.md`; session log: `Docs/Session_Log_2026-07-14b.md`.
+
+---
+
 ## Website ✓
 **Completed: July 10, 2026**
 

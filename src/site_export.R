@@ -43,6 +43,12 @@ se_is_b_team <- function(team_name) {
   grepl(" B$|Castilla|Bilbao Athletic|Mestalla|Fabril|Sevilla Atlético", team_name)
 }
 
+# recommender league_key -> the dataset's league slug (the URL-derived slugs
+# don't follow one rule: "la_liga" -> "laliga", not "la-liga")
+se_key_to_slug <- c(premier_league = "premier-league", la_liga = "laliga",
+                    serie_a = "serie-a", bundesliga = "bundesliga",
+                    ligue_1 = "ligue-1")
+
 se_coach_num <- function(coach_id) {
   out <- str_extract(coach_id, "(?<=/trainer/)\\d+")
   stopifnot(!anyNA(out[!is.na(coach_id)]))
@@ -89,6 +95,14 @@ se_load <- function() {
   } else NULL
   if (!is.null(d$rec)) {
     d$rec$facts_by_coach <- split(d$rec$facts, d$rec$facts$coach_id)
+  }
+
+  # player photos for the team builder (scrape may still be running; players
+  # not in the lookup yet simply get the initials fallback)
+  d$player_imgs <- if (file.exists("data/cache/player_images.rds")) {
+    readRDS("data/cache/player_images.rds")
+  } else {
+    data.frame(player_id = character(), local_path = character())
   }
 
   d$res <- d$res |>
@@ -329,12 +343,7 @@ se_suggestions <- function(d, team_season_ids) {
   ts <- intersect(team_season_ids, names(d$rec$teams))
   if (length(ts) == 0) return(NULL)
   entry <- d$rec$teams[[ts[1]]]
-  # league_key -> the dataset's league slug (the URL-derived slugs don't
-  # follow one rule: "la_liga" -> "laliga", not "la-liga")
-  key_to_slug <- c(premier_league = "premier-league", la_liga = "laliga",
-                   serie_a = "serie-a", bundesliga = "bundesliga",
-                   ligue_1 = "ligue-1")
-  team_slug <- unname(key_to_slug[entry$league_key])
+  team_slug <- unname(se_key_to_slug[entry$league_key])
   stopifnot(!is.na(team_slug))
   team_country <- unname(se_league_countries[team_slug])
 
@@ -401,6 +410,314 @@ se_suggestions <- function(d, team_season_ids) {
     coaches      = coaches,
     similar      = similar
   )
+}
+
+# --- team builder (Docs/Team_Builder_Design.md) --------------------------------------
+
+# Pitch coordinates for every formation string in cr_formation_slots
+# (persisted to recommender.rds$builder$formation_slots). x = 0..100 left to
+# right, y = 0..100 own goal line to opponent goal line; the GK slot is
+# explicit here (type "GK") though implicit in the slot-count vectors.
+# se_export_builder() hard-stops if a layout's type counts disagree with the
+# model's slot counts — the two must never drift apart.
+se_formation_layouts <- local({
+  sl <- function(type, side, x, y) data.frame(type = type, side = side,
+                                              x = x, y = y)
+  gk <- sl("GK", NA, 50, 2)
+  back4 <- rbind(sl("FB", "L", 15, 24), sl("CB", "L", 38, 18),
+                 sl("CB", "R", 62, 18), sl("FB", "R", 85, 24))
+  # flat back three at y = 18 (level with the back-4 CBs): a deeper middle CB
+  # (the old 13) sat right on top of the GK circle once players were placed.
+  # The GK at y = 2 keeps both the circles and the below-circle name chips
+  # clear in the CB-over-GK stack.
+  back3 <- rbind(sl("CB", "L", 25, 18), sl("CB", NA, 50, 18),
+                 sl("CB", "R", 75, 18))
+  list(
+    "4-2-3-1" = rbind(gk, back4,
+      sl("DM", "L", 38, 38), sl("DM", "R", 62, 38),
+      sl("W", "L", 15, 62), sl("AM", NA, 50, 58), sl("W", "R", 85, 62),
+      sl("ST", NA, 50, 80)),
+    "4-3-3" = rbind(gk, back4,
+      sl("CM", "L", 30, 44), sl("CM", NA, 50, 38), sl("CM", "R", 70, 44),
+      sl("W", "L", 18, 66), sl("W", "R", 82, 66), sl("ST", NA, 50, 80)),
+    "4-4-2" = rbind(gk, back4,
+      sl("W", "L", 12, 50), sl("CM", "L", 38, 46), sl("CM", "R", 62, 46),
+      sl("W", "R", 88, 50), sl("ST", "L", 38, 78), sl("ST", "R", 62, 78)),
+    "3-4-2-1" = rbind(gk, back3,
+      sl("FB", "L", 10, 42), sl("CM", "L", 38, 40), sl("CM", "R", 62, 40),
+      sl("FB", "R", 90, 42), sl("AM", "L", 35, 62), sl("AM", "R", 65, 62),
+      sl("ST", NA, 50, 80)),
+    "3-5-2" = rbind(gk, back3,
+      sl("FB", "L", 8, 45), sl("CM", "L", 30, 44), sl("CM", NA, 50, 38),
+      sl("CM", "R", 70, 44), sl("FB", "R", 92, 45),
+      sl("ST", "L", 38, 78), sl("ST", "R", 62, 78)),
+    "4-1-4-1" = rbind(gk, back4,
+      sl("DM", NA, 50, 34),
+      sl("W", "L", 12, 52), sl("CM", "L", 38, 48), sl("CM", "R", 62, 48),
+      sl("W", "R", 88, 52), sl("ST", NA, 50, 80)),
+    "4-3-1-2" = rbind(gk, back4,
+      sl("CM", "L", 30, 42), sl("CM", NA, 50, 38), sl("CM", "R", 70, 42),
+      sl("AM", NA, 50, 58), sl("ST", "L", 38, 76), sl("ST", "R", 62, 76)),
+    "3-4-1-2" = rbind(gk, back3,
+      sl("FB", "L", 10, 42), sl("CM", "L", 38, 40), sl("CM", "R", 62, 40),
+      sl("FB", "R", 90, 42), sl("AM", NA, 50, 58),
+      sl("ST", "L", 38, 76), sl("ST", "R", 62, 76)),
+    "3-4-3" = rbind(gk, back3,
+      sl("FB", "L", 10, 42), sl("CM", "L", 38, 40), sl("CM", "R", 62, 40),
+      sl("FB", "R", 90, 42), sl("W", "L", 22, 66), sl("W", "R", 78, 66),
+      sl("ST", NA, 50, 80)),
+    "4-4-1-1" = rbind(gk, back4,
+      sl("W", "L", 12, 50), sl("CM", "L", 38, 46), sl("CM", "R", 62, 46),
+      sl("W", "R", 88, 50), sl("AM", NA, 50, 62), sl("ST", NA, 50, 80)),
+    "5-3-2" = rbind(gk,
+      sl("FB", "L", 10, 30), sl("CB", "L", 30, 18), sl("CB", NA, 50, 18),
+      sl("CB", "R", 70, 18), sl("FB", "R", 90, 30),
+      sl("CM", "L", 30, 44), sl("CM", NA, 50, 40), sl("CM", "R", 70, 44),
+      sl("ST", "L", 38, 76), sl("ST", "R", 62, 76)),
+    "3-1-4-2" = rbind(gk, back3,
+      sl("DM", NA, 50, 34),
+      sl("FB", "L", 10, 46), sl("CM", "L", 30, 44), sl("CM", "R", 70, 44),
+      sl("FB", "R", 90, 46), sl("ST", "L", 38, 76), sl("ST", "R", 62, 76)),
+    "5-4-1" = rbind(gk,
+      sl("FB", "L", 10, 28), sl("CB", "L", 30, 18), sl("CB", NA, 50, 18),
+      sl("CB", "R", 70, 18), sl("FB", "R", 90, 28),
+      sl("W", "L", 15, 50), sl("CM", "L", 38, 46), sl("CM", "R", 62, 46),
+      sl("W", "R", 85, 50), sl("ST", NA, 50, 78)),
+    "4-2-2-2" = rbind(gk, back4,
+      sl("DM", "L", 38, 36), sl("DM", "R", 62, 36),
+      sl("AM", "L", 30, 58), sl("AM", "R", 70, 58),
+      sl("ST", "L", 38, 78), sl("ST", "R", 62, 78)),
+    "3-5-1-1" = rbind(gk, back3,
+      sl("FB", "L", 8, 45), sl("CM", "L", 30, 42), sl("CM", NA, 50, 38),
+      sl("CM", "R", 70, 42), sl("FB", "R", 92, 45),
+      sl("AM", NA, 50, 60), sl("ST", NA, 50, 80)),
+    "4-5-1" = rbind(gk, back4,
+      sl("W", "L", 10, 50), sl("CM", "L", 30, 46), sl("CM", NA, 50, 42),
+      sl("CM", "R", 70, 46), sl("W", "R", 90, 50), sl("ST", NA, 50, 80)),
+    "4-3-2-1" = rbind(gk, back4,
+      sl("CM", "L", 30, 42), sl("CM", NA, 50, 38), sl("CM", "R", 70, 42),
+      sl("AM", "L", 35, 60), sl("AM", "R", 65, 60), sl("ST", NA, 50, 80)),
+    "4-1-3-2" = rbind(gk, back4,
+      sl("DM", NA, 50, 32),
+      sl("CM", "L", 28, 50), sl("CM", NA, 50, 52), sl("CM", "R", 72, 50),
+      sl("ST", "L", 38, 76), sl("ST", "R", 62, 76)),
+    "3-2-4-1" = rbind(gk, back3,
+      sl("DM", "L", 38, 32), sl("DM", "R", 62, 32),
+      sl("FB", "L", 10, 55), sl("AM", "L", 35, 58), sl("AM", "R", 65, 58),
+      sl("FB", "R", 90, 55), sl("ST", NA, 50, 80)),
+    "3-3-1-3" = rbind(gk, back3,
+      sl("CM", "L", 25, 38), sl("CM", NA, 50, 35), sl("CM", "R", 75, 38),
+      sl("AM", NA, 50, 54), sl("W", "L", 18, 68), sl("W", "R", 82, 68),
+      sl("ST", NA, 50, 82)),
+    "3-3-3-1" = rbind(gk, back3,
+      sl("FB", "L", 12, 36), sl("DM", NA, 50, 35), sl("FB", "R", 88, 36),
+      sl("AM", "L", 30, 58), sl("AM", NA, 50, 60), sl("AM", "R", 70, 58),
+      sl("ST", NA, 50, 80)),
+    "4-2-4" = rbind(gk, back4,
+      sl("CM", "L", 38, 42), sl("CM", "R", 62, 42),
+      sl("W", "L", 12, 64), sl("W", "R", 88, 64),
+      sl("ST", "L", 38, 78), sl("ST", "R", 62, 78))
+  )
+})
+
+# Exports the team-builder data: the selectable player pool, the coach
+# similarity pool (raw profile vectors — the frontend computes cosine
+# similarity against user-built XIs), and the shared metadata (formations
+# with pitch coordinates, eligibility matrices, thresholds). Skipped with a
+# message when recommender.rds predates the builder component.
+se_export_builder <- function(d) {
+  b <- d$rec$builder
+  if (is.null(b)) {
+    cat("builder: recommender.rds has no builder component — skipped\n")
+    return(invisible())
+  }
+  season <- d$rec$meta$season
+
+  # gate: every layout must exist and agree with the model's slot counts
+  stopifnot(setequal(names(se_formation_layouts), names(b$formation_slots)))
+  for (f in names(b$formation_slots)) {
+    lay <- se_formation_layouts[[f]]
+    stopifnot(sum(lay$type == "GK") == 1, nrow(lay) == 11)
+    counts <- table(factor(lay$type[lay$type != "GK"],
+                           levels = colnames(b$archetype_slot_matrix)))
+    stopifnot(all(counts[names(b$formation_slots[[f]])] ==
+                    b$formation_slots[[f]]))
+  }
+
+  # --- player pool -------------------------------------------------------------
+  arch <- readRDS("data/cache/sofascore/archetypes.rds")
+  cw <- bind_rows(lapply(
+    list.files("data/cache/sofascore", pattern = "^crosswalk_\\d+\\.rds$",
+               full.names = TRUE), readRDS)) |>
+    filter(!is.na(player_id)) |>
+    select(season_ss_id, player_ss_id, player_id)
+
+  leagues <- readRDS("data/cache/leagues.rds")
+  teams   <- readRDS("data/cache/teams.rds")
+  players <- readRDS("data/cache/players.rds")
+  big5_ls <- leagues |>
+    filter(grepl("wettbewerb/(GB1|ES1|IT1|L1|FR1)/", league_season_id),
+           season_start_year %in% 2015:2024) |>
+    mutate(slug = case_when(
+      grepl("GB1", league_season_id) ~ "premier-league",
+      grepl("ES1", league_season_id) ~ "laliga",
+      grepl("IT1", league_season_id) ~ "serie-a",
+      grepl("L1",  league_season_id) ~ "bundesliga",
+      TRUE                           ~ "ligue-1"
+    ))
+  big5_players <- players |>
+    inner_join(teams |>
+                 inner_join(big5_ls |> select(league_season_id,
+                                              season_start_year, slug),
+                            by = "league_season_id") |>
+                 select(team_season_id, team_name, season_start_year, slug),
+               by = "team_season_id") |>
+    mutate(club_num = se_club_num(gsub("/saison_id/\\d+$", "", team_season_id)))
+
+  outfield <- arch |>
+    select(season_ss_id, player_ss_id, season_start_year, archetype) |>
+    inner_join(cw, by = c("season_ss_id", "player_ss_id")) |>
+    inner_join(big5_players |>
+                 select(player_id, season_start_year, player_name, slug,
+                        team_name, club_num, player_position, minutes_played,
+                        player_market_value_euro),
+               by = c("player_id", "season_start_year"),
+               relationship = "many-to-many") |>
+    group_by(season_ss_id, player_ss_id) |>
+    slice_max(minutes_played, n = 1, with_ties = FALSE) |>
+    ungroup()
+
+  gks <- big5_players |>
+    filter(player_position == "Goalkeeper", minutes_played >= 600) |>
+    mutate(archetype = NA_character_)
+
+  pool <- bind_rows(
+    outfield |> select(player_id, player_name, season_start_year, slug,
+                       team_name, club_num, player_position,
+                       player_market_value_euro, archetype),
+    gks |> select(player_id, player_name, season_start_year, slug,
+                  team_name, club_num, player_position,
+                  player_market_value_euro, archetype)
+  ) |>
+    arrange(player_id, desc(season_start_year))
+
+  img_ok <- d$player_imgs |> filter(!is.na(local_path))
+  photo_map <- setNames(paste0("assets/players/", basename(img_ok$local_path)),
+                        img_ok$player_id)
+
+  by_player <- split(pool, pool$player_id)
+  players_out <- lapply(by_player, function(g) {
+    list(
+      id     = as.integer(str_extract(g$player_id[1], "(?<=/spieler/)\\d+")),
+      name   = g$player_name[1],
+      photo  = if (g$player_id[1] %in% names(photo_map))
+                 unname(photo_map[g$player_id[1]]) else NULL,
+      seasons = lapply(seq_len(nrow(g)), function(i) list(
+        y    = g$season_start_year[i],
+        lg   = g$slug[i],
+        club = g$team_name[i],
+        club_id = as.integer(g$club_num[i]),
+        v    = if (is.na(g$player_market_value_euro[i])) NULL
+               else g$player_market_value_euro[i],
+        pos  = g$player_position[i],
+        arch = if (is.na(g$archetype[i])) NULL else g$archetype[i]
+      ))
+    )
+  })
+  se_write_json(unname(players_out),
+                file.path(se_site_dir, "data/builder/players.json"))
+  cat("builder players:", length(players_out), "(",
+      nrow(pool), "season rows )\n")
+
+  # --- coach pool --------------------------------------------------------------
+  share_cols <- grep("^share_", names(b$pool), value = TRUE)
+  coaches_out <- lapply(seq_len(nrow(b$pool)), function(i) {
+    p <- b$pool[i, ]
+    f <- d$rec$facts_by_coach[[p$coach_id]]
+    rating <- se_rating(d, p$coach_id)
+    nat <- if (!is.null(f) && !is.na(f$nationality)) {
+      strsplit(f$nationality, ", ")[[1]][1]
+    } else NULL
+    profile <- as.list(setNames(se_num(as.numeric(p[share_cols]), 4),
+                                sub("^share_", "", share_cols)))
+    list(
+      id            = as.integer(se_coach_num(p$coach_id)),
+      name          = p$coach_name,
+      img           = unname(d$img_map[p$coach_id]),
+      profile       = profile,
+      blup          = if (is.null(rating)) NULL else rating$blup,
+      grade         = if (is.null(rating)) NULL else list(
+                        letter = rating$letter_grade,
+                        cut_label = rating$cut_label),
+      n_stints      = p$n_stints_b5,
+      mean_residual = se_num(p$mean_res_b5, 3),
+      leagues       = I(if (is.null(f)) character(0) else f$leagues[[1]]),
+      countries     = I(if (is.null(f)) character(0) else f$countries[[1]]),
+      big5          = !is.null(f) && f$big5_games >= 30,
+      club_level    = if (is.null(f)) NULL else se_num(f$club_level, 1),
+      last_season   = if (is.null(f)) NULL else f$last_season,
+      nationality   = nat
+    )
+  })
+  se_write_json(coaches_out,
+                file.path(se_site_dir, "data/builder/coaches.json"))
+  cat("builder coaches:", length(coaches_out), "\n")
+
+  # --- meta ----------------------------------------------------------------------
+  # XI-value distributions (sum of each club's 11 highest player values,
+  # latest season): the frontend ranks the built XI against these for the
+  # similar-level chip
+  xi_vals <- big5_players |>
+    filter(season_start_year == season, !is.na(player_market_value_euro)) |>
+    group_by(slug, team_season_id) |>
+    slice_max(player_market_value_euro, n = 11, with_ties = FALSE) |>
+    summarize(xi_value = sum(player_market_value_euro), .groups = "drop")
+  xi_dist <- c(
+    lapply(split(xi_vals$xi_value, xi_vals$slug), function(v) sort(v)),
+    list(big5 = sort(xi_vals$xi_value))
+  )
+
+  formations_out <- lapply(names(b$formation_slots), function(f) {
+    lay <- se_formation_layouts[[f]]
+    list(
+      name   = f,
+      family = paste0(if (sum(lay$type == "CB") >= 3) "back3" else "back4",
+                      "_", sum(lay$type == "ST"), "st"),
+      slots  = lapply(seq_len(nrow(lay)), function(i) list(
+        type = lay$type[i],
+        side = if (is.na(lay$side[i])) NULL else lay$side[i],
+        x    = lay$x[i],
+        y    = lay$y[i]
+      ))
+    )
+  })
+
+  elig <- apply(b$archetype_slot_matrix, 1, as.list, simplify = FALSE)
+  tm_slots <- lapply(b$tm_position_slots, function(v) as.list(se_num(v, 3)))
+
+  meta <- list(
+    season          = season,
+    season_label    = se_season_label(season),
+    formations      = formations_out,
+    slot_types      = I(colnames(b$archetype_slot_matrix)),
+    eligibility     = elig,
+    tm_position_eligibility = tm_slots,
+    archetype_labels = as.list(b$archetype_labels),
+    eligibility_floor = 0.25,   # picker cutoff (Natural 1.0 / Capable .5 / Stretch .25)
+    sim_quality_blend = c(0.85, 0.15),   # same tilt as team pages
+    level_band      = 10,
+    active_since    = season - 1,
+    xi_values       = lapply(xi_dist, function(v) I(round(v / 1e6, 1)))
+  )
+  se_write_json(meta, file.path(se_site_dir, "data/builder/meta.json"))
+
+  # --- photos ----------------------------------------------------------------------
+  player_dir <- file.path(se_site_dir, "assets/players")
+  dir.create(player_dir, recursive = TRUE, showWarnings = FALSE)
+  used <- img_ok |> filter(player_id %in% pool$player_id)
+  n <- if (nrow(used)) sum(file.copy(used$local_path, player_dir,
+                                     overwrite = TRUE)) else 0
+  cat("builder assets:", n, "player photos copied\n")
 }
 
 # --- team pages --------------------------------------------------------------------
@@ -722,6 +1039,7 @@ export_site_data <- function() {
   se_export_teams(d)
   se_export_leagues(d)
   se_export_small(d)
+  se_export_builder(d)
   se_copy_assets(d)
   se_export_writeup()
   cat("\nSITE EXPORT COMPLETE ->", normalizePath(se_site_dir, mustWork = FALSE), "\n")

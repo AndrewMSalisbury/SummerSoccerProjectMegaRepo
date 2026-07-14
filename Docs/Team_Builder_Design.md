@@ -5,7 +5,47 @@ formation, click a circle on a drawn pitch to fill each position from a searchab
 player list, see the player's photo in the circle — and gets coach suggestions for
 the team they built, using the same similarity engine as the team pages.
 
-Status: design agreed 2026-07-14; not yet implemented.
+Status: design agreed 2026-07-14; **implemented same day** (session log
+`Docs/Session_Log_2026-07-14b.md`). Deviations and gate outcomes:
+
+- **Phase 0 sizing came in smaller than estimated:** 5,570 unique players (not
+  8–10k) — outfield pool 17,132 archetype player-seasons matched to TM (99.5%)
+  + 1,506 GK seasons (442 GKs); 18,638 season rows. `players.json` measures
+  2.4 MB → **single file, no split**. Photos average ~6 KB → ~34 MB total,
+  **committed to the repo** (in line with the ~39 MB of coach images).
+- **All gates passed:** 22 formation layouts validated against
+  `cr_formation_slots` (in-code stopifnot); eligibility spot checks (Van Dijk
+  absent from ST lists, GK slot lists goalkeepers only, Haaland/Isak/Osimhen
+  top the ST Natural tier); **JS/R similarity fixture matched exactly** (City
+  2024/25 replica XI → Guardiola/Conte/Setién/Arteta/De Zerbi… identical order
+  in both implementations); filter chips live-verified with stable card ranks
+  (1, 2, 4, 5, 8… under "This country"); URL-hash round-trip restores the full
+  XI on a fresh load; screenshot QA in both themes + 375px.
+- **Small simplification:** clicking a benched player auto-places him into the
+  best empty eligible slot (instead of a two-step choose-a-slot flow).
+- `recommender.rds` gained a `builder` component (§2.2's model constants +
+  the 81-coach profile pool); regenerated 2026-07-14 reusing the saved payoff
+  folds — the pre-registered validation was carried forward, not re-run.
+
+**Revised same day after Andrew's review** (supersedes parts of §3.1/§3.2 as
+originally written; the spec text below is updated):
+
+- Picker is **one value-sorted list** (career-peak value, descending) of
+  Natural + Capable players — no tier grouping, so a slot no longer reads as
+  one archetype's list. Capable players carry a small "Capable" tag. Stretch
+  players appear **only via search**, under an "Out of position" header.
+  80-row cap with a "type to narrow" note.
+- **Season is chosen in a second modal step** (popup listing every eligible
+  season with club, archetype, and that season's value), not an inline
+  `<select>` on the row; single-season players place immediately. The row
+  shows career-peak value + "N seasons".
+- Formation control is a **button grid** (all 22 chips, grouped back-4 /
+  back-3-or-5, current highlighted) in the right column **below the team
+  summary**, replacing the top-bar `<select>`; "Clear team" moved into the
+  summary-card header.
+- Slot/picker/bench photos use `object-fit: contain` (TM headshots are
+  139×181 portrait; `cover` in a square circle always crops 30% of the
+  height) — the whole face is visible with small side gaps.
 
 Settled decisions (Andrew, 2026-07-14):
 
@@ -107,8 +147,9 @@ rebuild like the rest of `site/data/`).
 - Vertical half-pitch-style SVG (goal at the bottom, attack up), drawn with the
   existing hand-rolled chart conventions and theme variables; renders in both
   themes.
-- Formation `<select>` listing all 22 strings, grouped by family (back-4 / back-3,
-  striker count) for scannability. Default `4-3-3`.
+- Formation picker: a button grid of all 22 strings (chips grouped back-4 /
+  back-3-or-5, current formation highlighted) in the right column below the
+  team summary. Default `4-3-3`.
 - Eleven circles at the coordinates from `meta.json`. Changing formation re-lays-out
   the circles; players already picked are **kept if the new formation has a slot
   they're eligible for** (greedy re-assignment, highest eligibility first), others
@@ -120,15 +161,19 @@ rebuild like the rest of `site/data/`).
 - Click a circle → a picker panel (same overlay pattern as the team-page carousel):
   search box + list of eligible player-seasons.
 - **Eligibility:** archetype row of `cr_archetype_slot_matrix` (TM fallback where
-  the season somehow lacks an archetype); a player-season appears for a slot when
-  its factor ≥ 0.25. Rendered in three groups: **Natural** (1.0), **Capable**
-  (≥ 0.5), **Stretch** (≥ 0.25) — this is exactly the "RB can play RM, attackers
-  play any attacking slot" allowance, but grounded in the validated matrix instead
-  of ad-hoc rules. GK slot lists goalkeepers only.
-- Sort within group: market value descending. For sided slots (LB/RB, LW/RW), TM
-  position side (Left-/Right-) sorts matching-side players first; it never filters.
-- List rows: photo/initials, name, season (e.g. "2019/20"), club + crest, value,
-  archetype label chip. Search matches name substrings (reuse the search component).
+  the season somehow lacks an archetype); a player-season is pickable for a slot
+  when its factor ≥ 0.25 — this is exactly the "RB can play RM, attackers play
+  any attacking slot" allowance, but grounded in the validated matrix instead of
+  ad-hoc rules. GK slot lists goalkeepers only.
+- **One row per player, sorted by career-peak market value** (descending) over
+  the player's Natural + Capable seasons (factor ≥ 0.5). Capable-at-best players
+  carry a "Capable" tag. Stretch-only players (0.25–0.5) never appear in the
+  browse list — search surfaces them under an "Out of position" header.
+- List rows: photo/initials, name (+ tag), peak-season club + crest + archetype
+  chip, peak value, season count. Clicking a row opens a **season chooser**
+  (every eligible season with club, archetype, that season's value; Stretch
+  seasons tagged); a single-season player places immediately. Search matches
+  name substrings.
 - Picking fills the circle with the photo (initials fallback), name + season label
   beneath; a small × clears the slot. **Rule: the same TM player may appear only
   once per team** — other seasons of an already-picked player are disabled in the

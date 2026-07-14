@@ -32,6 +32,7 @@ export async function initHeader() {
     el("nav", { class: "nav-links" },
       el("a", { href: "index.html" }, "Home"),
       dropdown,
+      el("a", { href: "builder.html" }, "Team builder"),
       el("a", { href: "writeup.html" }, "Writeup")),
     el("div", { class: "search-box" }, input, results),
     themeToggle()));

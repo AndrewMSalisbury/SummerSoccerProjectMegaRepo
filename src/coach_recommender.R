@@ -1166,9 +1166,29 @@ cr_save_results <- function(scorer, payoff_folds, n_top = 60,
     }
   }
 
+  # the team-builder page (Docs/Team_Builder_Design.md) computes similarity
+  # against user-built XIs in the browser, so it needs the raw profile
+  # vectors and the model constants — persisted here so site_export.R stays
+  # a pure results-reader (no sourcing of the cr_/cf_ chain)
+  tm_pos_labels <- c(
+    "Goalkeeper", "Centre-Back", "Left-Back", "Right-Back",
+    "Defensive Midfield", "Central Midfield", "Attacking Midfield",
+    "Left Midfield", "Right Midfield", "Left Winger", "Right Winger",
+    "Second Striker", "Centre-Forward", "Defender", "midfield",
+    "Midfielder", "attack", "Attacker")
+  builder <- list(
+    pool = thriving,   # profiles + mean_res_b5/n_stints_b5, >=4 stints, res > 0
+    formation_slots = cr_formation_slots,
+    archetype_slot_matrix = cr_archetype_slot_matrix,
+    tm_position_slots = setNames(lapply(tm_pos_labels, cr_tm_position_slot),
+                                 tm_pos_labels),
+    archetype_labels = pa_archetype_labels
+  )
+
   out <- list(
     teams = team_rows,
     facts = facts,
+    builder = builder,
     meta = list(
       as_of = scorer$as_of, season = season, delta = scorer$delta,
       beta_wv = scorer$beta_wv,
