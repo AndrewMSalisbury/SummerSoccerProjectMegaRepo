@@ -697,15 +697,17 @@ cr_build_scorer <- function(composition = NULL, coach_formations = NULL,
                       as.data.frame(slope_vars))
 
   # quality BLUPs, both cuts, with the published variance components for the
-  # approximate posterior SD: var_post = (1/var_coach + n/var_resid)^-1
+  # approximate posterior SD. M5 is games-weighted (2026-07-14), so resid is
+  # the per-game residual variance and
+  #   var_post = (1/var_coach + total_games/var_resid_per_game)^-1
   q <- lapply(c(top5 = "top5", `14league` = "14league"), function(cut) {
     blups <- readRDS(sprintf("data/results/coach_blups_%s.rds", cut))
     grades <- readRDS(sprintf("data/results/coach_grades_%s.rds", cut))
     blups |> left_join(grades |> select(coach_id, letter_grade, rank),
                        by = "coach_id")
   })
-  vc5  <- list(coach = 0.0044, resid = 0.1150)   # Part 5 published components
-  vc14 <- list(coach = 0.0027, resid = 0.1439)
+  vc5  <- list(coach = 0.0038, resid = 1.7683)   # Part 5 published components
+  vc14 <- list(coach = 0.0030, resid = 1.8143)
 
   coefs <- cr_value_model_coefs()
   beta_wv <- coefs[["log(norm_weighted_value)"]]
@@ -762,19 +764,19 @@ cr_score_team <- function(scorer, team_season_id, league_key,
 
   # candidate pool: every coach with a quality BLUP in either cut
   pool <- scorer$quality$top5 |>
-    select(coach_id, coach_name, blup, n_stints, letter_grade, rank) |>
+    select(coach_id, coach_name, blup, n_stints, total_games, letter_grade, rank) |>
     mutate(cut = "top5") |>
     bind_rows(
       scorer$quality$`14league` |>
         filter(!(coach_id %in% scorer$quality$top5$coach_id)) |>
-        select(coach_id, coach_name, blup, n_stints, letter_grade, rank) |>
+        select(coach_id, coach_name, blup, n_stints, total_games, letter_grade, rank) |>
         mutate(cut = "14league")
     )
 
   rows <- lapply(seq_len(nrow(pool)), function(i) {
     p <- pool[i, ]
     vc <- scorer$vc[[p$cut]]
-    var_quality <- 1 / (1 / vc$coach + p$n_stints / vc$resid)
+    var_quality <- 1 / (1 / vc$coach + p$total_games / vc$resid)
 
     # fit component: shrunken slope deviations x centered axes
     s <- scorer$slopes[scorer$slopes$coach_id == p$coach_id, ]

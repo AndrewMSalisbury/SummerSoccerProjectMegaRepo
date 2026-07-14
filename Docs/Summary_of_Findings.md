@@ -171,6 +171,8 @@ M4 and M5 were re-run on the full expanded dataset. A minutes-coverage filter (�
 
 *Correction (2026-07-10): a bug in the stint builder duplicated a coach's season totals when they had two tenure brackets in the same team-season (caretaker then permanent, or sacked and re-appointed) — 79 stints were double-counted, double-weighting those stints in the coach statistics and the mixed model. All Part 5 figures below reflect the corrected data (8,207 stints across 2,341 coaches). Parts 2–4 record the original 5-league analysis as it was run; the handful of affected stints there does not change any of those conclusions.*
 
+*Revision (2026-07-14): the M5 mixed model now weights each stint by its number of games. A per-game residual over 2 games has ~19× the sampling variance of one over 38, and the unweighted fit let brief caretaker stints count like full seasons — the estimated variance function is Var(stint) ≈ 0.014 + 1.50/n, so inverse-variance weights are essentially proportional to games (a saturating n/(n+k) alternative with the fitted k = 110 was rank-correlated 0.998 with plain games weights and less numerically stable). Games-weighted BLUPs also predicted held-out stints better than unweighted ones in an even/odd-season split test (games-weighted correlation with held-out stint residuals 0.13 vs 0.09), and they match the games-weighted quality refits that the recommender's pre-registered payoff validation tested out-of-sample (Part 7). The known trade-off: stint length is itself an outcome of performance — short stints are truncated bad spells (mean stint residual runs from −0.41 PPG at 1–5 games to +0.10 at 46+, a mostly within-coach gradient), so games weighting slightly downweights each coach's truncated disasters. The out-of-sample test says the noise reduction outweighs this selection tilt; it is retained as a limitation. The leaderboard effect is material (rank correlation 0.79 with the unweighted version): long-tenure coaches judged by full seasons rise, coaches whose best numbers came in short bursts fall. All Part 5 figures below are games-weighted; Parts 2–4 record the original unweighted analysis as it was run.*
+
 ### Residual Analysis (14 leagues)
 
 - 5,080 valid residuals (7 NA from non-positive normalised squad value)
@@ -182,13 +184,15 @@ M4 and M5 were re-run on the full expanded dataset. A minutes-coverage filter (�
 
 | Component | Variance | % of total |
 |---|---|---|
-| Coach | 0.0027 | 1.8% |
-| Club | 0.0049 | 3.2% |
-| Residual | 0.1439 | 95.0% |
+| Coach | 0.0030 | 3.7% |
+| Club | 0.0031 | 3.8% |
+| Residual | 1.8143 (per game) | 92.4% |
 
-**Likelihood ratio test: χ² = 6.01, df = 1, p = 0.0142.**
+*The residual variance in the weighted model is per game; the % shares put it on the stint scale at the mean stint length (24.4 games).*
 
-The coach effect remains statistically significant, but club variance now exceeds coach variance. This reversal from the original result reflects the composition of the expanded dataset: most coaches in smaller leagues never move between leagues, making cross-club portability hard to detect. Dominant clubs in smaller leagues (Dinamo Zagreb, Legia Warsaw, Club Brugge) also create strong persistent club signals that inflate the club component.
+**Likelihood ratio test: χ² = 28.47, df = 1, p < 0.0001.**
+
+The coach effect is strongly significant — much more so than in the unweighted fit (χ² = 6.01), because down-weighting noisy caretaker stints sharpens the coach signal. Coach and club variance are now essentially tied in the broad cut. The relative prominence of the club component still reflects the composition of the expanded dataset: most coaches in smaller leagues never move between leagues, making cross-club portability hard to detect, and dominant clubs in smaller leagues (Dinamo Zagreb, Legia Warsaw, Club Brugge) create strong persistent club signals.
 
 ### Top-5-Leagues Comparison (2005–2024)
 
@@ -196,23 +200,25 @@ To isolate the elite-coaching signal, M4 and M5 were re-run on the 5 major Europ
 
 | Component | Variance | % of total |
 |---|---|---|
-| Coach | 0.0044 | 3.5% |
-| Club | 0.0048 | 3.9% |
-| Residual | 0.1150 | 92.6% |
+| Coach | 0.0038 | 5.3% |
+| Club | 0.0032 | 4.5% |
+| Residual | 1.7683 (per game) | 90.2% |
 
-**Likelihood ratio test: χ² = 6.80, df = 1, p = 0.0091.**
+*Per-game residual; % shares computed at the mean stint length (27.6 games).*
 
-Coach and club variance are essentially tied. This sits between the original 5-league result (coach 8.5% > club 4.9%, 2015–2024 only) and the 14-league result. Extending to 20 seasons gives elite clubs more time to accumulate a stable identity signal, narrowing the gap — but the coach effect holds its own.
+**Likelihood ratio test: χ² = 17.89, df = 1, p < 0.0001.**
+
+Coach variance exceeds club variance in the top-5 cut, as in the original 5-league result (coach 8.5% > club 4.9%, 2015–2024 only, unweighted). Extending to 20 seasons gives elite clubs more time to accumulate a stable identity signal, but with caretaker noise down-weighted the portable coach effect stays clearly ahead.
 
 **How the coach/club relationship varies across dataset cuts:**
 
 | Dataset | Coach % | Club % | Coach > Club? |
 |---|---|---|---|
-| 5 leagues, 2015–2024 (original) | 8.5% | 4.9% | Yes |
-| 5 leagues, 2005–2024 | 3.5% | 3.9% | Tied |
-| 14 leagues, 2005–2024 | 1.8% | 3.2% | No |
+| 5 leagues, 2015–2024 (original, unweighted) | 8.5% | 4.9% | Yes |
+| 5 leagues, 2005–2024 | 5.3% | 4.5% | Yes |
+| 14 leagues, 2005–2024 | 3.7% | 3.8% | Tied |
 
-The pattern is interpretable: in datasets where elite coaches move frequently between leagues (the top-5 context), their portable effect is easier to detect and exceeds club-level persistence. In broader datasets with more locally-anchored coaches, club environment dominates.
+The pattern is interpretable: in datasets where elite coaches move frequently between leagues (the top-5 context), their portable effect is easier to detect and exceeds club-level persistence. In broader datasets with more locally-anchored coaches, the club environment carries as much signal as the coach.
 
 ### Updated Coach Rankings (top-5 leagues, 2005–2024)
 
@@ -222,27 +228,29 @@ Rankings use BLUPs from the top-5-leagues run, which offers the most stints per 
 
 | Rank | Coach | Stints | Games | Clubs | BLUP |
 |---|---|---|---|---|---|
-| 1 | Pep Guardiola | 16 | 596 | 3 | +0.114 |
-| 2 | Alex Ferguson | 8 | 304 | 1 | +0.083 |
-| 3 | Thomas Tuchel | 15 | 426 | 5 | +0.078 |
-| 4 | Antonio Conte | 11 | 357 | 6 | +0.078 |
-| 5 | Jürgen Klopp | 18 | 640 | 3 | +0.073 |
-| 6 | Igor Tudor | 7 | 116 | 5 | +0.072 |
-| 7 | Massimiliano Allegri | 13 | 468 | 3 | +0.066 |
-| 8 | Claudio Ranieri | 17 | 490 | 11 | +0.061 |
-| 9 | Unai Emery | 19 | 638 | 7 | +0.060 |
-| 10 | Simone Inzaghi | 10 | 349 | 2 | +0.056 |
-| 11 | Marcelino | 16 | 447 | 8 | +0.052 |
-| 12 | Urs Fischer | 5 | 147 | 1 | +0.051 |
-| 13 | Jupp Heynckes | 7 | 187 | 3 | +0.051 |
-| 14 | Manuel Pellegrini | 18 | 655 | 6 | +0.049 |
-| 15 | Eddie Howe | 9 | 331 | 2 | +0.048 |
+| 1 | Pep Guardiola | 16 | 596 | 3 | +0.145 |
+| 2 | Alex Ferguson | 8 | 304 | 1 | +0.118 |
+| 3 | Antonio Conte | 11 | 357 | 6 | +0.102 |
+| 4 | Massimiliano Allegri | 13 | 468 | 3 | +0.098 |
+| 5 | Urs Fischer | 5 | 147 | 1 | +0.094 |
+| 6 | Thomas Tuchel | 15 | 426 | 5 | +0.085 |
+| 7 | Andrea Mandorlini | 5 | 108 | 3 | +0.076 |
+| 8 | Jürgen Klopp | 18 | 640 | 3 | +0.075 |
+| 9 | Franck Haise | 6 | 184 | 3 | +0.069 |
+| 10 | Simone Inzaghi | 10 | 349 | 2 | +0.068 |
+| 11 | Claudio Ranieri | 17 | 490 | 11 | +0.061 |
+| 12 | Manuel Pellegrini | 18 | 655 | 6 | +0.057 |
+| 13 | Gian Piero Gasperini | 18 | 597 | 4 | +0.054 |
+| 14 | Marcelino | 16 | 447 | 8 | +0.054 |
+| 15 | Unai Emery | 19 | 638 | 7 | +0.053 |
+
+Games weighting reshuffles the top: full-season track records (Ferguson, Allegri, Gasperini) rise, while coaches whose strongest numbers came in shorter spells (Igor Tudor, 7 stints averaging 17 games, formerly 6th) drop out of the top 15.
 
 **Notable findings:**
 - **Claudio Ranieri** (17 stints, 11 clubs): the most portable coach in the dataset. Consistent overperformance across an extraordinary range of clubs and contexts — the strongest portability finding in the analysis.
-- **Marcelo Bielsa** (7 stints, 4 clubs, BLUP −0.068): consistently underperforms squad value across multiple clubs despite strong tactical reputation. A high-profile negative result.
-- **Eusebio Di Francesco** (12 stints, 8 clubs, BLUP −0.058): strong negative portability — consistent underperformance across diverse environments.
-- **Frank Lampard** (5 stints, 2 clubs, BLUP −0.060): has not converted playing ability into management results in this dataset.
+- **Marcelo Bielsa** (7 stints, 4 clubs, BLUP −0.043): consistently underperforms squad value across multiple clubs despite strong tactical reputation. A high-profile negative result.
+- **Eusebio Di Francesco** (12 stints, 8 clubs, BLUP −0.039): strong negative portability — consistent underperformance across diverse environments.
+- **Frank Lampard** (5 stints, 2 clubs, BLUP −0.056): has not converted playing ability into management results in this dataset.
 
 ---
 

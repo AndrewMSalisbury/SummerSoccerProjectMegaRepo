@@ -199,6 +199,19 @@ add_significance <- function(coach_stats, alpha = 0.05) {
 # variance components. Uses ML (not REML) for the LRT comparison.
 # Coach BLUPs (Best Linear Unbiased Predictors) serve as shrinkage-adjusted
 # rankings — sparse coaches are automatically pulled toward zero.
+#
+# Stints are weighted by n_games (2026-07-14): a per-game residual over 2 games
+# has ~19x the sampling variance of one over 38, and unweighted fits let brief
+# caretaker stints count like full seasons. The estimated variance function is
+# Var(stint) = 0.014 + 1.50/n — match noise dwarfs the stint-level shock, so
+# inverse-variance weights are ~proportional to n_games (saturating n/(n+k)
+# weights with the fitted k = 110 give a rank correlation of 0.998 with plain
+# n_games and were less stable). Games-weighted BLUPs also predicted held-out
+# stints better than unweighted in an even/odd-season split test, and match the
+# games-weighted quality refits validated by cr_payoff_validation(). Caveat:
+# stint length is itself an outcome of performance (sackings), so weighting
+# slightly downweights each coach's truncated bad spells; the OOS test says the
+# noise reduction outweighs that selection tilt.
 fit_mixed_model <- function(coach_residuals_tbl, min_games = 10, min_stints = 3) {
   if (!requireNamespace("lme4", quietly = TRUE)) stop("lme4 required: install.packages('lme4')")
 
@@ -214,9 +227,9 @@ fit_mixed_model <- function(coach_residuals_tbl, min_games = 10, min_stints = 3)
   cat("Unique clubs:   ", n_distinct(d$club_id), "\n\n")
 
   m_null <- lme4::lmer(partial_residual_ppg ~ (1 | club_id),
-                       data = d, REML = FALSE)
+                       data = d, weights = n_games, REML = FALSE)
   m_full <- lme4::lmer(partial_residual_ppg ~ (1 | club_id) + (1 | coach_id),
-                       data = d, REML = FALSE)
+                       data = d, weights = n_games, REML = FALSE)
 
   ll_null  <- as.numeric(stats::logLik(m_null))
   ll_full  <- as.numeric(stats::logLik(m_full))
@@ -228,10 +241,14 @@ fit_mixed_model <- function(coach_residuals_tbl, min_games = 10, min_stints = 3)
 
   vc_raw    <- as.data.frame(lme4::VarCorr(m_full))
   vc        <- vc_raw[, c("grp", "vcov", "sdcor")]
-  total_var <- sum(vc$vcov)
-  vc$pct_variance <- round(100 * vc$vcov / total_var, 1)
+  # with weights = n_games the residual vcov is per-game: Var(stint) = vcov/n.
+  # For the shares, put the residual on the stint scale at the mean stint length.
+  vc$vcov_stint <- ifelse(vc$grp == "Residual", vc$vcov / mean(d$n_games), vc$vcov)
+  vc$pct_variance <- round(100 * vc$vcov_stint / sum(vc$vcov_stint), 1)
 
   cat("=== Variance Components ===\n")
+  cat("  (residual vcov is per-game; %% shares use the stint-scale residual\n")
+  cat(sprintf("   at the mean stint length of %.1f games)\n", mean(d$n_games)))
   for (i in seq_len(nrow(vc))) {
     cat(sprintf("  %-12s  var = %.4f  sd = %.4f  (%0.1f%% of total)\n",
                 vc$grp[i], vc$vcov[i], vc$sdcor[i], vc$pct_variance[i]))
