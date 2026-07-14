@@ -396,7 +396,7 @@ se_suggestions <- function(d, team_season_ids) {
   list(
     season       = entry$season,
     team_level   = se_num(entry$team_level, 1),
-    level_band   = 20,   # default +/- percentile band for the level filter
+    level_band   = 10,   # default +/- percentile band for the level filter
     active_since = entry$season - 1,   # "recently active" threshold season
     coaches      = coaches,
     similar      = similar
