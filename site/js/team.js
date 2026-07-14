@@ -263,8 +263,8 @@ function renderSuggestions(t) {
   card.append(el("p", { class: "footnote" },
     "Descriptive, not a validated prediction: coaches with ≥4 big-5 stints " +
     "and a positive career residual, ordered by squad-mix similarity blended " +
-    "with a smaller weight on overall coach quality (70/30) — so a slightly " +
-    "less similar but stronger coach can rank above a closer match. Card " +
+    "with a small weight on overall coach quality (85/15) — so a slightly " +
+    "less similar but stronger coach can rank above a close match. Card " +
     "numbers are each coach's rank in the full ordering and don't change " +
     "when filters are applied. The model's out-of-sample-tested quality " +
     "ranking is on the leaderboard. Availability, wages, and contracts are " +

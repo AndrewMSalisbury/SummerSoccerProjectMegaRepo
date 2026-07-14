@@ -329,9 +329,13 @@ se_suggestions <- function(d, team_season_ids) {
   ts <- intersect(team_season_ids, names(d$rec$teams))
   if (length(ts) == 0) return(NULL)
   entry <- d$rec$teams[[ts[1]]]
-  team_league <- entry$league_key   # e.g. premier_league
-  # league_key -> slug ("premier_league" -> "premier-league")
-  team_slug <- gsub("_", "-", team_league)
+  # league_key -> the dataset's league slug (the URL-derived slugs don't
+  # follow one rule: "la_liga" -> "laliga", not "la-liga")
+  key_to_slug <- c(premier_league = "premier-league", la_liga = "laliga",
+                   serie_a = "serie-a", bundesliga = "bundesliga",
+                   ligue_1 = "ligue-1")
+  team_slug <- unname(key_to_slug[entry$league_key])
+  stopifnot(!is.na(team_slug))
   team_country <- unname(se_league_countries[team_slug])
 
   s <- entry$suggestions
@@ -355,10 +359,11 @@ se_suggestions <- function(d, team_season_ids) {
     ), se_coach_badges(d, r$coach_id, team_slug, team_country))
   })
 
-  # order the similarity pool by a quality-tilted blend (Andrew's direction,
-  # third revision): z-score similarity and the quality BLUP within the pool,
-  # rank by 0.7 x similarity + 0.3 x quality. The rank is assigned here, once,
-  # so cards keep their number when the frontend filters the pool.
+  # order the similarity pool by a quality-tilted blend (Andrew's direction;
+  # weight softened 0.7/0.3 -> 0.85/0.15 on review): z-score similarity and
+  # the quality BLUP within the pool, rank by 0.85 x similarity + 0.15 x
+  # quality. The rank is assigned here, once, so cards keep their number when
+  # the frontend filters the pool.
   sim <- entry$similar
   ratings <- lapply(sim$coach_id, function(cid) se_rating(d, cid))
   blup <- vapply(ratings, function(r) {
@@ -370,7 +375,7 @@ se_suggestions <- function(d, team_season_ids) {
     (x - mean(x, na.rm = TRUE)) / s
   }
   z_q <- zscore(blup); z_q[is.na(z_q)] <- 0
-  ord <- order(-(0.7 * zscore(sim$similarity) + 0.3 * z_q))
+  ord <- order(-(0.85 * zscore(sim$similarity) + 0.15 * z_q))
   sim <- sim[ord, ]; ratings <- ratings[ord]
 
   similar <- lapply(seq_len(nrow(sim)), function(i) {

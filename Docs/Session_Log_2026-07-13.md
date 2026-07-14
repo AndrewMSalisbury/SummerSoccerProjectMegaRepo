@@ -183,7 +183,17 @@ and the quality BLUP are z-scored and blended **70/30 similarity/quality**
 closer match — for City, A+ Conte (81% match) and Tuchel (75%) now sit above the
 C+ Setién (87%), who fell out of the top nine. Guardiola stays #1. The similarity
 meter still shows the raw match %, making the tilt visible where meters are
-non-monotonic down the grid; the footnote discloses the 70/30 blend.
+non-monotonic down the grid; the footnote discloses the blend.
+
+**Revision 4 (bug fix + tuning):** the exporter derived each team's league slug by
+underscore-swapping the league key, which produced "la-liga" where the dataset's
+slug is "laliga" — so on every La Liga page the league/country/domestic badges
+were all false and those filters emptied the grid. Fixed with an explicit
+key→slug map + a stopifnot guard; verified across all five leagues (Real Madrid:
+32 league-experienced, 20 domestic in the pool; + domestic filter yields an
+all-Spanish grid with Zidane correctly excluded as French). The quality tilt was
+also softened 70/30 → **85/15** at Andrew's direction — more similarity-driven,
+still enough to demote weak-quality close matches.
 
 ## Part 3: Nationality scrape (`source_data.r`)
 
