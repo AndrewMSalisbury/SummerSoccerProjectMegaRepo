@@ -355,13 +355,31 @@ se_suggestions <- function(d, team_season_ids) {
     ), se_coach_badges(d, r$coach_id, team_slug, team_country))
   })
 
+  # order the similarity pool by a quality-tilted blend (Andrew's direction,
+  # third revision): z-score similarity and the quality BLUP within the pool,
+  # rank by 0.7 x similarity + 0.3 x quality. The rank is assigned here, once,
+  # so cards keep their number when the frontend filters the pool.
   sim <- entry$similar
+  ratings <- lapply(sim$coach_id, function(cid) se_rating(d, cid))
+  blup <- vapply(ratings, function(r) {
+    if (is.null(r) || is.null(r$blup)) NA_real_ else as.numeric(r$blup)
+  }, numeric(1))
+  zscore <- function(x) {
+    s <- sd(x, na.rm = TRUE)
+    if (is.na(s) || s == 0) return(rep(0, length(x)))
+    (x - mean(x, na.rm = TRUE)) / s
+  }
+  z_q <- zscore(blup); z_q[is.na(z_q)] <- 0
+  ord <- order(-(0.7 * zscore(sim$similarity) + 0.3 * z_q))
+  sim <- sim[ord, ]; ratings <- ratings[ord]
+
   similar <- lapply(seq_len(nrow(sim)), function(i) {
-    rating <- se_rating(d, sim$coach_id[i])
+    rating <- ratings[[i]]
     c(list(
       id         = as.integer(se_coach_num(sim$coach_id[i])),
       name       = sim$coach_name[i],
       img        = unname(d$img_map[sim$coach_id[i]]),
+      rank       = i,
       similarity = se_num(sim$similarity[i], 3),
       n_stints   = sim$n_stints_b5[i],
       mean_residual = se_num(sim$mean_res_b5[i], 3),

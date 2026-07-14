@@ -178,9 +178,9 @@ function renderSuggestions(t) {
       `Suggested coaches — ${fmtSeason(s.season)} squad`),
     el("div", { class: "chart-sub" },
       "Coaches who excelled with squads like this one — matched on the " +
-      "player-type mix of their overperforming big-5 stints (descriptive: a " +
-      "judgment aid, not a prediction). Use the chips to filter by career " +
-      "plausibility."));
+      "player-type mix of their overperforming big-5 stints, with a tilt " +
+      "toward overall coach quality (descriptive: a judgment aid, not a " +
+      "prediction). Use the chips to filter by career plausibility."));
 
   // ----- filter chips
   const filters = {
@@ -222,10 +222,12 @@ function renderSuggestions(t) {
     const simMin = Math.min(...shown.map(m => m.similarity));
     const span = Math.max(simMax - simMin, 0.001);
     const grid = el("div", { class: "sim-grid" });
-    shown.forEach((m, i) => {
+    shown.forEach(m => {
       const width = 25 + 75 * (m.similarity - simMin) / span; // rank-scaled meter
-      grid.append(el("a", { class: "sim-card-lg", href: `coach.html?id=${m.id}` },
-        el("span", { class: "sim-rank" }, String(i + 1)),
+      grid.append(el("a", { class: "sim-card-lg", href: `coach.html?id=${m.id}`,
+        title: `#${m.rank} overall for this squad` },
+        // rank in the unfiltered ordering — stable under filters
+        el("span", { class: "sim-rank" }, String(m.rank)),
         coachImg(m.img, m.name, "sim-photo"),
         el("div", { class: "sim-body" },
           el("div", { class: "sim-name" }, m.name,
@@ -259,12 +261,15 @@ function renderSuggestions(t) {
   // t.suggestions.coaches, so restoring it is a frontend-only change.
 
   card.append(el("p", { class: "footnote" },
-    "Similarity is descriptive — coaches with ≥4 big-5 stints and a positive " +
-    "career residual, matched on the player-type mix of their overperforming " +
-    "squads. It is a judgment aid, not a validated prediction; the model's " +
-    "out-of-sample-tested coach quality ranking is on the leaderboard. " +
-    "Availability, wages, and contracts are not modeled (yes, this page will " +
-    "happily suggest hiring Guardiola). See the writeup."));
+    "Descriptive, not a validated prediction: coaches with ≥4 big-5 stints " +
+    "and a positive career residual, ordered by squad-mix similarity blended " +
+    "with a smaller weight on overall coach quality (70/30) — so a slightly " +
+    "less similar but stronger coach can rank above a closer match. Card " +
+    "numbers are each coach's rank in the full ordering and don't change " +
+    "when filters are applied. The model's out-of-sample-tested quality " +
+    "ranking is on the leaderboard. Availability, wages, and contracts are " +
+    "not modeled (yes, this page will happily suggest hiring Guardiola). " +
+    "See the writeup."));
 
   return card;
 }

@@ -174,6 +174,17 @@ restoring it is frontend-only. The footnote now points to the leaderboard as the
 home of the validated ranking. Verified by live chromote click-tests and
 screenshots; each card carries its badges so filter pass/fail reasons are visible.
 
+**Revision 3:** two refinements. (a) Card numbers are now each coach's rank in the
+full default ordering, assigned once in the exporter — they no longer renumber when
+filters subset the grid (City + "This country" shows 1, 2, 3, 5, 6, 7, 9, 11, 18).
+(b) The ordering now factors in coach quality: within each team's pool, similarity
+and the quality BLUP are z-scored and blended **70/30 similarity/quality**
+(`se_suggestions()`), so a slightly less similar but stronger coach outranks a
+closer match — for City, A+ Conte (81% match) and Tuchel (75%) now sit above the
+C+ Setién (87%), who fell out of the top nine. Guardiola stays #1. The similarity
+meter still shows the raw match %, making the tilt visible where meters are
+non-monotonic down the grid; the footnote discloses the 70/30 blend.
+
 ## Part 3: Nationality scrape (`source_data.r`)
 
 - `xx_raw_coach_nationality()` (header `span[itemprop='nationality']`, flag titles,
