@@ -80,6 +80,39 @@ short-burst profiles fall (Igor Tudor out of the top 15; Quique Sánchez Flores
 seasons. LRT evidence for a coach effect strengthens in both cuts. The grade
 curve re-centres automatically (mean 75 / sd 10 on the new BLUP distribution).
 
+## Follow-up: certification bar (same day, later session)
+
+Andrew flagged Andrea Mandorlini (108 games, 7th in the top-5 cut) as exactly
+the selection-flattered thin record he'd predicted: three short stints
+averaging −0.42 PPG are (correctly) down-weighted, leaving a career mean of
++0.45 weighted vs +0.07 unweighted. Score-side fixes were tested and all
+degraded out-of-sample prediction of held-out stints (scratchpad `floor_oos.R`,
+`trunc_test.R`, `gap_penalty_test.R`, `gap_quarter.R`):
+
+- weight floors (`pmax(n, season/2)` etc.): worse on both games-weighted and
+  unweighted evaluation, and singular on one even/odd split;
+- a truncation-share penalty (replaced mid-season): the OOS coefficient is
+  *positive* (+0.06, p = 0.018 unweighted eval) — the model already prices
+  truncation in (cor(BLUP, trunc share) = −0.33) and sacked coaches mean-revert;
+- a gap penalty (weighted − unweighted career mean, incl. one-sided λ·max(gap,0)):
+  gap coefficient positive (p ≈ 0.02–0.03); λ = 0.25 halves the held-out
+  ordering correlation (0.105 → 0.048); the symmetric version puts 21–54-game
+  caretakers with negative BLUPs above Guardiola.
+
+Resolution: a **display certification bar** in `save_coach_grades()` —
+≥ 109 career games in the cut (Andrew's number, chosen to exclude Mandorlini's
+108), with an FDR-significance exemption (added because Xavi, 103 games,
+significant in both cuts, would otherwise be uncertified; the exemption
+currently re-admits only him). Ungraded coaches keep their BLUP but get no
+grade, no leaderboard slot, and no recommender-pool entry
+(`cr_score_team()` pool now filters to graded coaches, preferring the top-5
+row only when graded there). Grade curve re-fit on certified coaches
+(215 top-5, 545 all-leagues; leaderboard n matches). Coach-page copy updated
+(`site_export.R` summary, `coach.js` grade card). Docs: display note +
+top-15 table (Sarri in at 15) in `Summary_of_Findings.md`, CLAUDE.md note.
+Verified on the exported site: Mandorlini ungraded, off the leaderboard, in
+zero of 496 teams' suggestion cards; all four significant chips present.
+
 ## Loose ends
 
 - Coach nationality scrape **completed** during the session: 3,533 coaches in

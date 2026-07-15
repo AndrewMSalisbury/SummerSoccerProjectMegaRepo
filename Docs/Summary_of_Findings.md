@@ -173,6 +173,8 @@ M4 and M5 were re-run on the full expanded dataset. A minutes-coverage filter (�
 
 *Revision (2026-07-14): the M5 mixed model now weights each stint by its number of games. A per-game residual over 2 games has ~19× the sampling variance of one over 38, and the unweighted fit let brief caretaker stints count like full seasons — the estimated variance function is Var(stint) ≈ 0.014 + 1.50/n, so inverse-variance weights are essentially proportional to games (a saturating n/(n+k) alternative with the fitted k = 110 was rank-correlated 0.998 with plain games weights and less numerically stable). Games-weighted BLUPs also predicted held-out stints better than unweighted ones in an even/odd-season split test (games-weighted correlation with held-out stint residuals 0.13 vs 0.09), and they match the games-weighted quality refits that the recommender's pre-registered payoff validation tested out-of-sample (Part 7). The known trade-off: stint length is itself an outcome of performance — short stints are truncated bad spells (mean stint residual runs from −0.41 PPG at 1–5 games to +0.10 at 46+, a mostly within-coach gradient), so games weighting slightly downweights each coach's truncated disasters. The out-of-sample test says the noise reduction outweighs this selection tilt; it is retained as a limitation. The leaderboard effect is material (rank correlation 0.79 with the unweighted version): long-tenure coaches judged by full seasons rise, coaches whose best numbers came in short bursts fall. The per-coach descriptive statistics and significance tests are weighted the same way (games-weighted mean with SE = √(σ̂²_game / total games), a weighted one-sample t-test); testing now requires ≥ 3 stints, because on 1 degree of freedom the SE estimate can collapse to ~0 when a coach's two stints agree by luck. All Part 5 figures below are games-weighted; Parts 2–4 record the original unweighted analysis as it was run.*
 
+*Display note (2026-07-14, second revision): grades, the leaderboard, and the recommender candidate pool now require a **certification bar of ≥ 109 career games** in the cut (or individual FDR significance — as of this date that exemption re-admits exactly one coach, Xavi, 103 games). The bar is presentational, not a model change: sub-bar coaches keep their BLUP and stay in the mixed model, but the site declines to certify them. Rationale: the games-weighted BLUP correctly down-weights short bad stints, so a thin record whose long stints went well can rank high on evidence the data cannot distinguish from luck (the motivating case: Andrea Mandorlini, 108 games, ranked 7th in the top-5 cut with three discounted short stints averaging −0.42 PPG). Every score-side correction tested — weight floors, a truncation-share penalty, a penalty on the weighted-minus-unweighted career-mean gap — degraded out-of-sample prediction of held-out stints (the gap even carries the opposite sign: high-gap coaches slightly beat their BLUP, p ≈ 0.02–0.03), so the ranking math is untouched and thin records are excluded from certification instead. The grade curve is re-fit on certified coaches (215 top-5, 545 all-leagues).*
+
 ### Residual Analysis (14 leagues)
 
 - 5,080 valid residuals (7 NA from non-positive normalised squad value)
@@ -234,17 +236,17 @@ Rankings use BLUPs from the top-5-leagues run, which offers the most stints per 
 | 4 | Massimiliano Allegri | 13 | 468 | 3 | +0.098 |
 | 5 | Urs Fischer | 5 | 147 | 1 | +0.094 |
 | 6 | Thomas Tuchel | 15 | 426 | 5 | +0.085 |
-| 7 | Andrea Mandorlini | 5 | 108 | 3 | +0.076 |
-| 8 | Jürgen Klopp | 18 | 640 | 3 | +0.075 |
-| 9 | Franck Haise | 6 | 184 | 3 | +0.069 |
-| 10 | Simone Inzaghi | 10 | 349 | 2 | +0.068 |
-| 11 | Claudio Ranieri | 17 | 490 | 11 | +0.061 |
-| 12 | Manuel Pellegrini | 18 | 655 | 6 | +0.057 |
-| 13 | Gian Piero Gasperini | 18 | 597 | 4 | +0.054 |
-| 14 | Marcelino | 16 | 447 | 8 | +0.054 |
-| 15 | Unai Emery | 19 | 638 | 7 | +0.053 |
+| 7 | Jürgen Klopp | 18 | 640 | 3 | +0.075 |
+| 8 | Franck Haise | 6 | 184 | 3 | +0.069 |
+| 9 | Simone Inzaghi | 10 | 349 | 2 | +0.068 |
+| 10 | Claudio Ranieri | 17 | 490 | 11 | +0.061 |
+| 11 | Manuel Pellegrini | 18 | 655 | 6 | +0.057 |
+| 12 | Gian Piero Gasperini | 18 | 597 | 4 | +0.054 |
+| 13 | Marcelino | 16 | 447 | 8 | +0.054 |
+| 14 | Unai Emery | 19 | 638 | 7 | +0.053 |
+| 15 | Maurizio Sarri | 9 | 332 | 5 | +0.052 |
 
-Games weighting reshuffles the top: full-season track records (Ferguson, Allegri, Gasperini) rise, while coaches whose strongest numbers came in shorter spells (Igor Tudor, 7 stints averaging 17 games, formerly 6th) drop out of the top 15.
+Games weighting reshuffles the top: full-season track records (Ferguson, Allegri, Gasperini) rise, while coaches whose strongest numbers came in shorter spells (Igor Tudor, 7 stints averaging 17 games, formerly 6th) drop out of the top 15. The certification bar removes Andrea Mandorlini (108 games, briefly 7th on the games-weighted BLUP) — see the display note above.
 
 **Notable findings:**
 - **Claudio Ranieri** (17 stints, 11 clubs): the most portable coach in the dataset. Consistent overperformance across an extraordinary range of clubs and contexts — the strongest portability finding in the analysis.

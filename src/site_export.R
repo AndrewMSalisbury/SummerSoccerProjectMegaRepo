@@ -219,7 +219,7 @@ se_coach_summary <- function(name, rating, stints) {
   }
 
   rate <- if (is.null(rating)) {
-    " Too few games for a grade (the ranking requires at least 3 stints and 10 games)."
+    " Too thin a record for a grade (grading requires at least 3 stints and 109 league games in the dataset)."
   } else {
     sig <- if (isTRUE(rating$significant))
       " — one of the few coaches statistically significant after FDR correction" else ""

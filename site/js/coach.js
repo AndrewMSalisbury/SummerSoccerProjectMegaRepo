@@ -55,8 +55,8 @@ function renderGradeCard(r) {
       el("div", { class: "grade-letter muted" }, "—"),
       el("div", { class: "grade-detail" },
         el("div", {}, el("strong", {}, "Unranked")),
-        el("div", {}, "insufficient data for a grade"),
-        el("div", { class: "muted" }, "(needs ≥3 stints and ≥10 games)")));
+        el("div", {}, "record too thin to grade"),
+        el("div", { class: "muted" }, "(needs ≥3 stints and ≥109 games)")));
   }
   const card = el("div", { class: "grade-card" },
     el("div", { class: "grade-letter" + gradeTier(r.letter_grade) }, r.letter_grade),

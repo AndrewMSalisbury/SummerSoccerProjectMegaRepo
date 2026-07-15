@@ -523,11 +523,29 @@ grade_coaches <- function(coach_blups, mean_score = 75, sd_score = 10) {
 # coach_grades_14league.rds to data/results/ for the website export
 # (Docs/Website_Design.md sec. 6.2, Website_Implementation_Plan.md Phase 0.1).
 # rank is the coach's position within the cut, ordered by BLUP descending.
-save_coach_grades <- function(results_dir = "data/results") {
+#
+# min_games_graded is a display certification bar, not a model input: coaches
+# below it keep their BLUP (and stay in the mixed model) but receive no grade,
+# no leaderboard slot, and no recommender-pool entry. Added 2026-07-14 after
+# the weighting review: thin records whose good long stints survive while bad
+# short stints are (correctly) down-weighted can rank high on a BLUP the data
+# can't distinguish from luck, and every score-side penalty we tested degraded
+# out-of-sample prediction. The grade curve is re-fit on the survivors.
+# Exemption: coaches significant after FDR (coach_ranked_<cut>.rds) are graded
+# regardless of games — significance is itself sufficient evidence, and the
+# bar exists to filter records the data can't distinguish from luck. As of
+# 2026-07-14 the exemption re-admits exactly one coach (Xavi, 103 games).
+save_coach_grades <- function(results_dir = "data/results", min_games_graded = 109) {
   cuts <- c(top5 = "coach_blups_top5.rds", `14league` = "coach_blups_14league.rds")
   out <- lapply(names(cuts), function(cut) {
     blups <- readRDS(file.path(results_dir, cuts[[cut]]))
-    graded <- grade_coaches(blups) |>
+    ranked <- readRDS(file.path(results_dir, paste0("coach_ranked_", cut, ".rds")))
+    sig_ids <- ranked$coach_id[!is.na(ranked$significant) & ranked$significant]
+    eligible <- blups |>
+      dplyr::filter(total_games >= min_games_graded | coach_id %in% sig_ids)
+    cat(sprintf("[%s] certification bar >= %d games (or FDR-significant): grading %d of %d coaches\n",
+                cut, min_games_graded, nrow(eligible), nrow(blups)))
+    graded <- grade_coaches(eligible) |>
       dplyr::mutate(rank = dplyr::row_number()) |>
       dplyr::select(coach_id, coach_name, blup, numeric_grade, letter_grade,
                     rank, n_stints, total_games, n_clubs)

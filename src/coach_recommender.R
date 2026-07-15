@@ -762,13 +762,20 @@ cr_score_team <- function(scorer, team_season_id, league_key,
   ref_deploy <- cr_deployable(fvals, scorer$league_profiles[[league_key]],
                               scorer$mean_rigidity)
 
-  # candidate pool: every coach with a quality BLUP in either cut
-  pool <- scorer$quality$top5 |>
+  # candidate pool: every GRADED coach in either cut, preferring the top-5 row
+  # when graded there. Ungraded coaches (below the certification bar in
+  # save_coach_grades(), letter_grade NA after the join) keep their BLUP in
+  # the model but are not recommended — the site never surfaces a coach it
+  # declines to certify. The bar is per cut, so a coach can qualify via the
+  # 14-league cut while below it in the top-5 cut.
+  graded5 <- scorer$quality$top5 |>
+    filter(!is.na(letter_grade)) |>
     select(coach_id, coach_name, blup, n_stints, total_games, letter_grade, rank) |>
-    mutate(cut = "top5") |>
+    mutate(cut = "top5")
+  pool <- graded5 |>
     bind_rows(
       scorer$quality$`14league` |>
-        filter(!(coach_id %in% scorer$quality$top5$coach_id)) |>
+        filter(!is.na(letter_grade), !(coach_id %in% graded5$coach_id)) |>
         select(coach_id, coach_name, blup, n_stints, total_games, letter_grade, rank) |>
         mutate(cut = "14league")
     )
