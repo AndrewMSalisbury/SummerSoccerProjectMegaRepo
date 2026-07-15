@@ -40,11 +40,7 @@ async function init() {
         `top-5 cut · ${d.n_graded_14league} all leagues`)));
 
   main.append(el("h2", {}, "Top coaches — performance above squad-value expectation"),
-    el("p", { class: "subtitle" },
-      `${lb.cut_label} cut, ranked by BLUP (shrunk toward zero when data is sparse). ` +
-      "Grades are a bell curve over ranked coaches. " +
-      "Stints, clubs, and games are full-career totals across all 14 leagues."));
-  main.append(renderLeaderboard(lb));
+    ...renderLeaderboard(lb));
 
   main.append(el("h2", {}, "Leagues"));
   const grid = el("div", { class: "tile-grid" });
@@ -61,14 +57,40 @@ async function init() {
     `player-type analysis: SofaScore (big-5 leagues, 2015/16–2024/25). Generated ${meta.generated}.`));
 }
 
+// Returns [subtitle, card]; the subtitle names the active cut, so grades in the
+// table are never shown without their cut label (the two cuts use separate
+// grading curves).
 function renderLeaderboard(lb) {
-  const card = el("div", { class: "chart-card" });
-  const wrap = el("div", { class: "table-wrap" });
-  card.append(wrap);
+  const cuts = { top5: lb.top5, all14: lb.all14 };
+  let cutKey = "top5";
   let expanded = false;
 
+  const subtitle = el("p", { class: "subtitle" });
+  const card = el("div", { class: "chart-card" });
+  const toggle = el("div", { class: "seg-toggle" });
+  const wrap = el("div", { class: "table-wrap" });
+  const btn = el("button", { class: "show-more", type: "button",
+    onclick: () => { expanded = !expanded; render(); } });
+  card.append(el("div", { class: "chart-controls" }, toggle), wrap, btn);
+
   function render() {
-    const rows = expanded ? lb.coaches : lb.coaches.slice(0, 25);
+    const cut = cuts[cutKey];
+    subtitle.textContent =
+      `${cut.cut_label} cut, ranked by BLUP (shrunk toward zero when data is sparse). ` +
+      "Grades are a bell curve over ranked coaches. " +
+      "Stints, clubs, and games are full-career totals across all 14 leagues.";
+    clear(toggle).append(...Object.entries(cuts).map(([k, c]) =>
+      el("button", {
+        type: "button",
+        class: k === cutKey ? "active" : "",
+        onclick: () => {
+          if (k === cutKey) return;
+          cutKey = k;
+          expanded = false;
+          render();
+        },
+      }, c.cut_label)));
+    const rows = expanded ? cut.coaches : cut.coaches.slice(0, 25);
     const table = el("table", { class: "data" },
       el("thead", {}, el("tr", {},
         el("th", { class: "num" }, "#"),
@@ -98,15 +120,11 @@ function renderLeaderboard(lb) {
           : el("span", { class: c.mean_residual >= 0 ? "delta-pos" : "delta-neg" },
               fmtSigned(c.mean_residual)))))));
     clear(wrap).append(table);
+    btn.textContent = expanded
+      ? "Show top 25"
+      : `Show all ${cut.coaches.length} ranked coaches`;
   }
 
   render();
-  const btn = el("button", { class: "show-more", type: "button",
-    onclick: () => {
-      expanded = !expanded;
-      btn.textContent = expanded ? "Show top 25" : `Show all ${lb.coaches.length} ranked coaches`;
-      render();
-    } }, `Show all ${lb.coaches.length} ranked coaches`);
-  card.append(btn);
-  return card;
+  return [subtitle, card];
 }

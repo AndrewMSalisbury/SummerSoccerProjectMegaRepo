@@ -898,7 +898,7 @@ se_export_leagues <- function(d) {
 # --- home page + search + meta ----------------------------------------------------
 
 se_export_small <- function(d) {
-  # stint/game/club counts in grades5 cover top-5-league stints only; the
+  # stint/game/club counts in a cut's grades cover only that cut's stints; the
   # leaderboard shows full-career totals (same definition as the coach pages'
   # career header) so the two never disagree for coaches with stints in both
   # cuts (e.g. a La Liga + LaLiga 2 career)
@@ -908,27 +908,33 @@ se_export_small <- function(d) {
               career_games  = sum(n_games),
               career_clubs  = n_distinct(club_num),
               .groups = "drop")
-  lb <- d$grades5 |>
-    left_join(d$ranked5 |> select(coach_id, mean_residual, ci_lower, ci_upper,
-                                  significant),
-              by = "coach_id") |>
-    left_join(career, by = "coach_id") |>
-    mutate(coach_num = se_coach_num(coach_id))
-  stopifnot(!anyNA(lb$career_stints))
-  leaderboard <- lapply(seq_len(nrow(lb)), function(i) {
-    s <- lb[i, ]
-    list(
-      id = as.integer(s$coach_num), name = s$coach_name,
-      img = unname(d$img_map[s$coach_id]),
-      rank = s$rank, letter_grade = s$letter_grade,
-      numeric_grade = s$numeric_grade, blup = se_num(s$blup, 4),
-      n_stints = s$career_stints, total_games = s$career_games,
-      n_clubs = s$career_clubs,
-      mean_residual = se_num(s$mean_residual),
-      significant = isTRUE(s$significant)
-    )
-  })
-  se_write_json(list(cut_label = "Top-5 leagues", coaches = leaderboard),
+  se_lb_cut <- function(grades, ranked, cut_label) {
+    lb <- grades |>
+      left_join(ranked |> select(coach_id, mean_residual, ci_lower, ci_upper,
+                                 significant),
+                by = "coach_id") |>
+      left_join(career, by = "coach_id") |>
+      mutate(coach_num = se_coach_num(coach_id))
+    stopifnot(!anyNA(lb$career_stints))
+    coaches <- lapply(seq_len(nrow(lb)), function(i) {
+      s <- lb[i, ]
+      list(
+        id = as.integer(s$coach_num), name = s$coach_name,
+        img = unname(d$img_map[s$coach_id]),
+        rank = s$rank, letter_grade = s$letter_grade,
+        numeric_grade = s$numeric_grade, blup = se_num(s$blup, 4),
+        n_stints = s$career_stints, total_games = s$career_games,
+        n_clubs = s$career_clubs,
+        mean_residual = se_num(s$mean_residual),
+        significant = isTRUE(s$significant)
+      )
+    })
+    list(cut_label = cut_label, coaches = coaches)
+  }
+  # both grading cuts ship; the home page toggles between them (grades from the
+  # two cuts sit on separate curves, so each block carries its own cut_label)
+  se_write_json(list(top5  = se_lb_cut(d$grades5,  d$ranked5,  "Top-5 leagues"),
+                     all14 = se_lb_cut(d$grades14, d$ranked14, "All leagues")),
                 file.path(se_site_dir, "data/leaderboard.json"))
 
   search <- c(

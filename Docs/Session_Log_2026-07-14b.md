@@ -216,6 +216,28 @@ absent at ST; Salah season chooser shows all 10 seasons with per-season values
 keeps the query; City-XI suggestion order unchanged (fixture still exact);
 3-5-2 chip round-trip preserves picks; light + dark screenshots.
 
+## Home-page leaderboard cut toggle (same day)
+
+Added a segmented toggle to the home-page top-coaches leaderboard so it can
+switch between the **Top-5 leagues** cut (default) and the **All leagues**
+(14-league) cut — previously only the top-5 cut shipped.
+
+- `se_export_small()` (`site_export.R`) now emits both cuts into
+  `leaderboard.json` under `top5` / `all14` keys (shared `se_lb_cut()` helper
+  over `grades5/ranked5` and `grades14/ranked14`). Career stint/game/club
+  totals stay full-career for both.
+- `home.js` `renderLeaderboard()` rewritten to return `[subtitle, card]`, hold
+  a `.seg-toggle` of the two cut labels, and re-render on switch. The subtitle
+  always names the active cut (grades never render without their cut label,
+  since the two cuts use separate curves); switching resets to the top 25 and
+  updates the "Show all N" count.
+- QA (`qa_leaderboard.R`, chromote): top-5 default shows 215 ranked / Guardiola
+  #1; switching to All leagues shows 545 ranked with a visibly different field
+  (Rowett, Corberán, Warnock, Coppell climbing on the 14-league curve), resets
+  to 25 rows, expands to 545. Light-mode screenshots `qa_lb_top5.png` /
+  `qa_lb_all14.png`.
+- Docs/Website_Design.md §5.5 + data-pipeline table updated.
+
 ## Loose ends
 
 - **Player photo scrape still running** (resumable; ~5,100 remaining at

@@ -110,7 +110,7 @@ site/
 ### 5.5 Home page (`index.html`)
 
 - Hero: project one-liner + link to writeup.
-- **Top-coaches leaderboard** (top-5-leagues cut, min 3 stints/10 games — the table from Summary_of_Findings Part 5): rank, photo, name, grade, BLUP, stints, clubs. Links to coach pages.
+- **Top-coaches leaderboard** with a segmented toggle between the **Top-5 leagues** cut (default, min 3 stints/10 games — the table from Summary_of_Findings Part 5) and the **All leagues** (14-league) cut: rank, photo, name, grade, BLUP, stints, clubs. Links to coach pages. The subtitle always names the active cut (the two cuts sit on separate grading curves, so a grade is never shown without its label); switching cuts resets the table to the top 25. `leaderboard.json` carries both cuts (`top5` / `all14`).
 - League directory (14 crest-style tiles → league pages).
 - Search box (also in the global header).
 
@@ -135,7 +135,7 @@ One idempotent function `export_site_data()` that reads only from `src/data/` an
 | `data/coaches/<id>.json` | header stats, both-cut grades/BLUPs/ranks, per-stint series for the graph, archetype fit or `null`, generated summary | blups, ranked, grades, residuals, archetype_fit |
 | `data/teams/<id>.json` | header stats, coach history rows, season series, squad value series | coach_residuals, residuals |
 | `data/leagues/<code>.json` | per-season standings blocks, league stats | residuals, coach_residuals |
-| `data/leaderboard.json` | home-page top table | grades + ranked (top-5 cut) |
+| `data/leaderboard.json` | home-page top table, both cuts (`top5` / `all14`) | grades + ranked (both cuts) |
 | `data/search_index.json` | `{type, id, name}` for every coach/team/league | all |
 | `assets/coaches/`, `assets/crests/` | images copied, renamed to numeric ids | images dirs |
 | `writeup.html` | converted markdown | Docs/Summary_of_Findings.md |
