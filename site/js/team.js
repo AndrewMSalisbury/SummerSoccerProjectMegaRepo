@@ -208,6 +208,29 @@ function renderSuggestions(t) {
   card.append(gridHost);
   const MAX_CARDS = 9;
 
+  // ----- squad-fit pop-up drawer (built once; slides in from the right when a
+  // card is clicked). Keeps the cards clean; detail lives here.
+  const sfBody = el("div", { class: "sf-drawer-body" });
+  const sfClose = el("button", { class: "sf-close", type: "button",
+    "aria-label": "Close", onclick: () => closeDrawer() }, "×");
+  const sfDrawer = el("aside", { class: "sf-drawer" }, sfClose, sfBody);
+  const sfBackdrop = el("div", { class: "sf-backdrop", onclick: () => closeDrawer() });
+  document.body.append(sfBackdrop, sfDrawer);
+
+  function onKey(e) { if (e.key === "Escape") closeDrawer(); }
+  function closeDrawer() {
+    sfDrawer.classList.remove("open");
+    sfBackdrop.classList.remove("open");
+    document.removeEventListener("keydown", onKey);
+  }
+  function openDrawer(m) {
+    clear(sfBody);
+    sfBody.append(drawerContent(m, s));
+    sfDrawer.classList.add("open");
+    sfBackdrop.classList.add("open");
+    document.addEventListener("keydown", onKey);
+  }
+
   function draw() {
     clear(gridHost);
     const rows = s.similar.filter(c =>
@@ -225,7 +248,14 @@ function renderSuggestions(t) {
     shown.forEach(m => {
       const width = 25 + 75 * (m.similarity - simMin) / span; // rank-scaled meter
       grid.append(el("a", { class: "sim-card-lg", href: `coach.html?id=${m.id}`,
-        title: `#${m.rank} overall for this squad` },
+        title: "Click for squad fit · ctrl/⌘-click for full profile",
+        onclick: (e) => {
+          // normal click pops the squad-fit drawer; let power-users
+          // ctrl/⌘/middle-click through to the coach profile (the href)
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+          e.preventDefault();
+          openDrawer(m);
+        } },
         // rank in the unfiltered ordering — stable under filters
         el("span", { class: "sim-rank" }, String(m.rank)),
         coachImg(m.img, m.name, "sim-photo"),
@@ -272,6 +302,137 @@ function renderSuggestions(t) {
     "See the writeup."));
 
   return card;
+}
+
+// Contents of the coach pop-up drawer for one similar coach: an at-a-glance
+// dossier (career span, preferred formations, clubs coached, leagues) plus the
+// squad-fit diagnostic (Squad_Fit_Gap_Design.md) — which of the squad's value
+// his usual shapes leave idle / where they are thin, in € and slots, never in
+// points (the deployment layer is exploratory, not a validated hiring signal).
+function drawerContent(m, s) {
+  const wrap = el("div", {});
+  const c = m.career;
+
+  // ----- header
+  wrap.append(el("div", { class: "sf-drawer-head" },
+    coachImg(m.img, m.name, "sf-drawer-photo"),
+    el("div", { style: "min-width:0" },
+      el("div", { class: "sf-drawer-name" }, m.name,
+        m.grade ? el("span", { title: `${m.grade.cut_label} cut`,
+          class: "grade-chip" + gradeTier(m.grade.letter),
+          style: "margin-left:8px" }, m.grade.letter) : null),
+      m.grade ? el("div", { class: "muted", style: "font-size:11.5px;margin-top:3px" },
+        `Overall grade · ${m.grade.cut_label} cut`) : null)));
+
+  // ----- headline stat tiles
+  const tiles = el("div", { class: "sf-stats" },
+    sfStat(`${Math.round(m.similarity * 100)}%`, "squad-mix match"),
+    sfStat(fmtSigned(m.mean_residual), `PPG over ${m.n_stints} big-5 stints`));
+  if (c) tiles.append(sfStat(
+    c.first_season === c.last_season ? `${c.first_season}`
+      : `${c.first_season}–${String(c.last_season).slice(2)}`,
+    `${c.n_teams} club${c.n_teams === 1 ? "" : "s"} · ${c.total_games} games`));
+  wrap.append(tiles);
+
+  wrap.append(badgeCell(m, s));
+
+  // ----- preferred formations
+  if (c && c.formations && c.formations.length) {
+    wrap.append(el("div", { class: "sf-section-title" }, "Preferred formations"));
+    const list = el("div", { class: "sf-forms" });
+    c.formations.forEach(f => {
+      list.append(el("div", { class: "sf-form-row" },
+        el("span", { class: "sf-form-name" }, f.formation),
+        el("span", { class: "sf-form-bar" },
+          el("span", { style: `width:${f.pct}%` })),
+        el("span", { class: "sf-form-pct muted" }, `${f.pct}%`)));
+    });
+    wrap.append(list);
+    wrap.append(el("div", { class: "sf-rigid muted" }, rigidityLabel(c.rigidity)));
+  }
+
+  // ----- clubs coached
+  if (c && c.teams && c.teams.length) {
+    wrap.append(el("div", { class: "sf-section-title" }, "Clubs coached"));
+    const chips = el("div", { class: "sf-clubs" });
+    c.teams.forEach(t => {
+      chips.append(el("span", { class: "sf-club",
+        title: `${t.games} games` },
+        t.name, el("span", { class: "sf-club-span" }, t.span)));
+    });
+    wrap.append(chips);
+    if (c.n_teams > c.teams.length) {
+      chips.append(el("span", { class: "sf-club sf-club-more" },
+        `+${c.n_teams - c.teams.length} more`));
+    }
+    if (c.leagues && c.leagues.length) {
+      wrap.append(el("div", { class: "sf-rigid muted" },
+        `Leagues: ${c.leagues.join(" · ")}`));
+    }
+  }
+
+  // ----- squad fit
+  wrap.append(el("div", { class: "sf-section-title" }, `Squad fit at ${s_teamName()}`));
+  const detail = el("div", { class: "sf-detail" });
+  const sf = m.squad_fit;
+  if (!sf) {
+    detail.append(el("div", { class: "sf-line" },
+      "No squad-fit detail available for this coach."));
+  } else {
+    const strand = sf.strand || [], gaps = sf.gaps || [];
+    if (strand.length) {
+      detail.append(el("div", { class: "sf-sub" }, "Squad value his shapes underuse"));
+      const max = Math.max(...strand.map(x => x.eur_m), 1);
+      const bars = el("div", { class: "sf-bars" });
+      strand.forEach(x => {
+        bars.append(el("div", { class: "sf-bar-row" },
+          el("span", { class: "sf-bar-label" }, x.label),
+          el("span", { class: "sf-bar-track" },
+            el("span", { class: "sf-bar-fill",
+              style: `width:${Math.max(6, 100 * x.eur_m / max)}%` })),
+          el("span", { class: "sf-bar-val" }, `€${x.eur_m}m`)));
+      });
+      detail.append(bars);
+    }
+    if (gaps.length) {
+      detail.append(el("div", { class: "sf-sub" }, "Positions his shapes fill only with a stretch"));
+      const chips = el("div", { class: "sf-gap-chips" });
+      gaps.forEach(g => chips.append(el("span", { class: "sf-gap-chip" }, g.label)));
+      detail.append(chips);
+    }
+    if (!strand.length && !gaps.length) detail.append(el("div", { class: "sf-line" },
+      "Natural fits across the pitch — his usual shapes leave little squad " +
+      "value out of position."));
+  }
+  detail.append(el("div", { class: "sf-note" },
+    "Which of the squad's value his usual formations tend to leave out — a " +
+    "descriptive shape fit, not a points forecast."));
+  wrap.append(detail);
+
+  wrap.append(el("a", { class: "sf-profile-link", href: `coach.html?id=${m.id}` },
+    "View full coach profile →"));
+  return wrap;
+}
+
+function sfStat(value, label) {
+  return el("div", { class: "sf-stat" },
+    el("div", { class: "sf-stat-val" }, value),
+    el("div", { class: "sf-stat-lbl muted" }, label));
+}
+
+// The suggestions block doesn't carry the team name, but the page <h1> does.
+function s_teamName() {
+  const h1 = document.querySelector("h1");
+  return h1 ? h1.childNodes[0].textContent.trim() : "this squad";
+}
+
+// rigidity in [0,1]: higher = more fixed a shape (cr_rigidity).
+function rigidityLabel(r) {
+  if (r == null) return "";
+  if (r >= 0.66) return "Sticks tightly to his usual shape";
+  if (r >= 0.48) return "Fairly consistent shape across squads";
+  if (r >= 0.32) return "Adapts his shape to the squad";
+  return "Highly flexible — reshapes often";
 }
 
 function badgeCell(c, s) {

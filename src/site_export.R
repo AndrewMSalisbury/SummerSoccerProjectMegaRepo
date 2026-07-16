@@ -316,6 +316,53 @@ se_league_countries <- c(
 )
 
 # plausibility badges for one coach, precomputed against a target team
+# Compact squad-fit block for one coach on one team (Docs/Squad_Fit_Gap_Design.md).
+# NULL when recommender.rds predates the feature or the coach has no diagnostic.
+# euros are rounded to whole millions for display.
+se_squad_fit <- function(entry, coach_id) {
+  sf <- entry$squad_fit[[coach_id]]
+  if (is.null(sf)) return(NULL)
+  strand <- if (!is.null(sf$strand) && nrow(sf$strand))
+    lapply(seq_len(nrow(sf$strand)), function(j)
+      list(label = sf$strand$label[j], eur_m = round(sf$strand$eur[j] / 1e6)))
+    else list()
+  gaps <- if (!is.null(sf$gaps) && nrow(sf$gaps))
+    lapply(seq_len(nrow(sf$gaps)), function(j)
+      list(label = sf$gaps$label[j], best_fill = se_num(sf$gaps$best_fill[j], 2)))
+    else list()
+  list(gap_pct = se_num(sf$gap_pct, 1),
+       gap_eur_m = round(sf$gap_eur / 1e6),
+       strand = strand, gaps = gaps)
+}
+
+# Descriptive career dossier for the suggestion drawer (preferred formations,
+# rigidity, career span, clubs coached). NULL when the coach isn't in the pool.
+se_coach_dossier <- function(d, coach_id) {
+  x <- d$rec$dossier[[coach_id]]
+  if (is.null(x)) return(NULL)
+  forms <- if (length(x$formations))
+    lapply(x$formations, function(f)
+      list(formation = f$formation, pct = round(100 * f$share)))
+    else list()
+  teams <- if (length(x$teams))
+    lapply(x$teams, function(t)
+      list(name = t$name, games = t$games,
+           span = if (t$first == t$last) as.character(t$first)
+                  else paste0(t$first, "–", substr(t$last, 3, 4))))
+    else list()
+  list(
+    formations   = forms,
+    rigidity     = se_num(x$rigidity, 2),
+    first_season = x$first_season,
+    last_season  = x$last_season,
+    total_games  = x$total_games,
+    n_stints     = x$n_stints,
+    n_teams      = x$n_teams,
+    leagues      = I(unname(se_league_names[x$leagues])),
+    teams        = teams
+  )
+}
+
 se_coach_badges <- function(d, coach_id, team_slug, team_country) {
   f <- d$rec$facts_by_coach[[coach_id]]
   nat <- if (!is.null(f) && !is.na(f$nationality)) {
@@ -398,7 +445,9 @@ se_suggestions <- function(d, team_season_ids) {
       n_stints   = sim$n_stints_b5[i],
       mean_residual = se_num(sim$mean_res_b5[i], 3),
       grade = if (is.null(rating)) NULL else list(
-        letter = rating$letter_grade, cut_label = rating$cut_label)
+        letter = rating$letter_grade, cut_label = rating$cut_label),
+      squad_fit = se_squad_fit(entry, sim$coach_id[i]),
+      career    = se_coach_dossier(d, sim$coach_id[i])
     ), se_coach_badges(d, sim$coach_id[i], team_slug, team_country))
   })
 

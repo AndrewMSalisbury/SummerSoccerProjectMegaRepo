@@ -379,14 +379,16 @@ cr_team_squad <- function(team_season_id, league_key, season_start_year,
 # 10 slots to maximize sum(value x eligibility). Greedy seeding + pairwise
 # improvement (swap assigned<->assigned and assigned<->bench until no gain);
 # exact enough at this scale and dependency-free (design sec. 4.3 note re
-# lpSolve).
-cr_best_xi_value <- function(squad, formation) {
+# lpSolve). Returns the assignment, not just the total, so the squad-fit
+# diagnostic (Docs/Squad_Fit_Gap_Design.md) can inspect who plays where and
+# who is left out. NULL when the squad has < 10 outfield players.
+cr_best_xi_assign <- function(squad, formation) {
   slots <- cr_formation_slots[[formation]]
   slot_list <- rep(names(slots), slots)          # length 10
   o <- squad$outfield
-  if (nrow(o) < 10) return(NA_real_)
-  W <- as.matrix(o[, cr_slot_types]) * o$value   # player x slot value matrix
-  Wl <- W[, slot_list, drop = FALSE]             # player x slot-instance
+  if (nrow(o) < 10) return(NULL)
+  elig_mat <- as.matrix(o[, cr_slot_types])      # player x slot-type eligibility
+  Wl <- (elig_mat * o$value)[, slot_list, drop = FALSE]  # player x slot-instance
 
   n <- nrow(Wl); k <- ncol(Wl)
   assigned <- rep(NA_integer_, k)                # slot-instance -> player row
@@ -423,7 +425,35 @@ cr_best_xi_value <- function(squad, formation) {
     if (!improved) break
   }
 
-  sum(Wl[cbind(assigned, seq_len(k))]) + squad$gk_value
+  slot_col <- match(slot_list, cr_slot_types)
+  xi <- data.frame(
+    slot_type  = slot_list,
+    elig       = elig_mat[cbind(assigned, slot_col)],
+    value      = o$value[assigned],
+    player_id  = o$player_id[assigned],
+    player_name = o$player_name[assigned],
+    archetype  = o$archetype[assigned],
+    stringsAsFactors = FALSE
+  )
+  bench_rows <- which(!taken)
+  ft <- unique(slot_list)                        # slot types this shape fields
+  bench <- data.frame(
+    value       = o$value[bench_rows],
+    best_elig   = if (length(bench_rows))
+      apply(elig_mat[bench_rows, ft, drop = FALSE], 1, max) else numeric(0),
+    player_id   = o$player_id[bench_rows],
+    player_name = o$player_name[bench_rows],
+    archetype   = o$archetype[bench_rows],
+    stringsAsFactors = FALSE
+  )
+  list(value = sum(Wl[cbind(assigned, seq_len(k))]) + squad$gk_value,
+       xi = xi, bench = bench)
+}
+
+# Best-XI total value only (the assignment discarded). NA when < 10 outfield.
+cr_best_xi_value <- function(squad, formation) {
+  a <- cr_best_xi_assign(squad, formation)
+  if (is.null(a)) NA_real_ else a$value
 }
 
 # Best-XI value for every formation string, one team. Returns a named vector.
@@ -442,6 +472,114 @@ cr_deployable <- function(fvals, profile, rigidity) {
   common <- intersect(names(profile), names(fvals))
   vprof <- sum(profile[common] * fvals[common]) / sum(profile[common])
   rigidity * vprof + (1 - rigidity) * vmax
+}
+
+# =============================================================================
+# 4b. Squad-fit gap diagnostic (Docs/Squad_Fit_Gap_Design.md)
+# =============================================================================
+#
+# Explains the (exploratory) deployment term for one coach-team pair, in euros
+# and slots rather than points: which of the squad's value the coach's usual
+# shapes leave idle, and which positions his shapes can only fill with a poor
+# positional match. Adds no model and makes no points claim; the deployment
+# layer failed the payoff test (2026-07-13) and this diagnostic inherits that
+# exploratory label. See design sec. 0.
+
+# friendly slot-type names for the "thin at ..." list
+cr_slot_labels <- c(
+  CB = "centre-back", FB = "full-back", DM = "holding midfielder",
+  CM = "central midfielder", AM = "attacking midfielder",
+  W  = "wide player", ST = "striker")
+
+cr_arch_label <- function(a) {
+  if (length(a) == 0 || is.na(a)) return("unclassified")
+  lab <- pa_archetype_labels[[a]]
+  if (is.null(lab)) "unclassified" else lab
+}
+
+# For one coach (formation profile + rigidity) and one target squad:
+#   gap_pct/gap_eur  the squad's best-shape best-XI value minus what the coach
+#                    would deploy (cr_deployable), i.e. value his shape
+#                    preferences + rigidity leave on the table (>= 0).
+#   strand           value left idle, rolled up by player archetype: bench
+#                    players worth MORE THAN THE CHEAPEST STARTER the coach's
+#                    shape fields (Andrew's chosen definition, 2026-07-15),
+#                    plus value played out of natural role (value x (1 - elig)).
+#   gaps             slot types the coach's shapes can only fill with a stretch
+#                    player (assigned eligibility < `stretch`), with the best
+#                    available fit — the recruitment "thin at ..." list.
+# Quantities are averaged across the coach's real repertoire (shapes with
+# p(f|C) >= min_share, renormalised), so a rigid coach is judged on his one
+# shape and a flexible coach on the blend he actually uses. Returns NULL when
+# the squad can't field 10 outfield players in any shape.
+cr_squad_fit <- function(squad, fvals, profile, rigidity,
+                         min_share = 0.10, stretch = 0.5, n_show = 3,
+                         strand_floor = 5e6) {
+  if (all(is.na(fvals))) return(NULL)
+  vmax <- max(fvals, na.rm = TRUE)
+
+  if (is.null(profile)) {
+    deploy <- vmax
+    rep_w  <- setNames(1, names(which.max(fvals)))   # assume the best shape
+  } else {
+    deploy <- cr_deployable(fvals, profile, rigidity)
+    common <- intersect(names(profile), names(fvals)[!is.na(fvals)])
+    p <- profile[common]
+    p <- p[p >= min_share]
+    if (length(p) == 0) { pc <- profile[common]; p <- pc[which.max(pc)] }
+    rep_w <- p / sum(p)
+  }
+  gap_eur <- max(0, vmax - deploy)
+  gap_pct <- 100 * gap_eur / vmax
+
+  strand   <- setNames(numeric(0), character(0))   # archetype label -> euros
+  gap_ct   <- setNames(numeric(0), character(0))   # slot type -> weighted count
+  gap_fill <- setNames(numeric(0), character(0))   # slot type -> weighted best fit
+  addv <- function(acc, key, v) {
+    cur <- acc[key]; if (is.na(cur)) cur <- 0
+    acc[key] <- cur + v; acc
+  }
+
+  for (f in names(rep_w)) {
+    w <- rep_w[[f]]
+    a <- cr_best_xi_assign(squad, f)
+    if (is.null(a)) next
+    cheapest_starter <- min(a$xi$value)
+    st <- a$bench[a$bench$value > cheapest_starter, , drop = FALSE]
+    for (j in seq_len(nrow(st)))
+      strand <- addv(strand, cr_arch_label(st$archetype[j]), w * st$value[j])
+    oor <- a$xi[a$xi$elig < 1, , drop = FALSE]
+    for (j in seq_len(nrow(oor)))
+      strand <- addv(strand, cr_arch_label(oor$archetype[j]),
+                     w * oor$value[j] * (1 - oor$elig[j]))
+    short <- a$xi[a$xi$elig < stretch, , drop = FALSE]
+    for (stype in unique(short$slot_type)) {
+      e <- short$elig[short$slot_type == stype]
+      gap_ct   <- addv(gap_ct, stype, w)
+      gap_fill <- addv(gap_fill, stype, w * min(e))
+    }
+  }
+
+  # "unclassified" (players lagged without a big-5 archetype) is not a useful
+  # display label — drop it from the shown strand, keep it out of the roll-up
+  strand <- strand[names(strand) != "unclassified"]
+  strand <- sort(strand[strand >= strand_floor], decreasing = TRUE)
+  strand_df <- if (length(strand)) head(data.frame(
+    label = names(strand), eur = as.numeric(strand),
+    stringsAsFactors = FALSE), n_show) else NULL
+
+  gaps_df <- NULL
+  if (length(gap_ct)) {
+    gap_ct <- gap_ct[order(-gap_ct)]
+    gaps_df <- head(data.frame(
+      slot = names(gap_ct),
+      label = unname(cr_slot_labels[names(gap_ct)]),
+      share = as.numeric(gap_ct),
+      best_fill = as.numeric(gap_fill[names(gap_ct)] / gap_ct),
+      stringsAsFactors = FALSE), n_show)
+  }
+
+  list(gap_pct = gap_pct, gap_eur = gap_eur, strand = strand_df, gaps = gaps_df)
 }
 
 # Mechanical validation of the eligibility matrix (design sec. 7.2): at every
@@ -825,6 +963,8 @@ cr_score_team <- function(scorer, team_season_id, league_key,
     mutate(uplift_rank = row_number())
   attr(out, "shares") <- shares   # 11 archetype shares (similarity layer)
   attr(out, "axes") <- x
+  attr(out, "squad") <- squad     # for the squad-fit diagnostic (cr_squad_fit)
+  attr(out, "fvals") <- fvals
   out
 }
 
@@ -1108,6 +1248,60 @@ cr_similar_coaches <- function(profiles, shares, min_stints = 3) {
     select(coach_id, coach_name, n_stints, similarity)
 }
 
+# Per-coach descriptive dossier for the team-page suggestion drawer: preferred
+# formations (top recency-weighted shapes from the scorer's formation profile),
+# rigidity, career span, and the clubs coached (14-league history, most recent
+# first). Purely descriptive — no residual/quality claim beyond what the drawer
+# already shows. `coach_ids` restricts the dossier to the coaches actually shown
+# on the site (the similarity pool) so recommender.rds stays lean.
+cr_coach_dossier <- function(scorer, coach_ids, n_formations = 3, n_teams = 6) {
+  cr14 <- readRDS("data/results/coach_residuals_14league.rds") |>
+    filter(coach_id %in% coach_ids)
+
+  teams <- cr14 |>
+    group_by(coach_id, club = team_name) |>
+    summarize(games = sum(n_games), first = min(season), last = max(season),
+              .groups = "drop")
+  span <- cr14 |>
+    group_by(coach_id) |>
+    summarize(first_season = min(season), last_season = max(season),
+              total_games = sum(n_games), n_stints = n(),
+              leagues = list(sort(unique(league))), .groups = "drop")
+
+  dossier <- list()
+  for (cid in coach_ids) {
+    sp <- span[span$coach_id == cid, ]
+    if (nrow(sp) == 0) next
+
+    prof <- scorer$profiles[[cid]]
+    forms <- if (is.null(prof) || length(prof) == 0) list() else {
+      p <- sort(prof, decreasing = TRUE)
+      p <- p[seq_len(min(n_formations, length(p)))]
+      lapply(seq_along(p), function(j)
+        list(formation = names(p)[j], share = unname(p[j])))
+    }
+    rg <- scorer$rigidity$rigidity[scorer$rigidity$coach_id == cid]
+    rg <- if (length(rg)) rg[1] else scorer$mean_rigidity
+
+    tt <- teams[teams$coach_id == cid, ]
+    n_teams_total <- nrow(tt)
+    tt <- tt[order(-tt$last, -tt$games), , drop = FALSE]
+    tt <- head(tt, n_teams)
+    team_list <- lapply(seq_len(nrow(tt)), function(j)
+      list(name = tt$club[j], games = tt$games[j],
+           first = tt$first[j], last = tt$last[j]))
+
+    dossier[[cid]] <- list(
+      formations = forms, rigidity = rg,
+      teams = team_list, n_teams = n_teams_total,
+      first_season = sp$first_season, last_season = sp$last_season,
+      total_games = sp$total_games, n_stints = sp$n_stints,
+      leagues = sp$leagues[[1]]
+    )
+  }
+  dossier
+}
+
 # =============================================================================
 # 9. Results export for the website
 # =============================================================================
@@ -1163,10 +1357,20 @@ cr_save_results <- function(scorer, payoff_folds, n_top = 60,
       # client-side, so it needs depth to survive the plausibility chips
       sim <- cr_similar_coaches(thriving, attr(sc, "shares"), min_stints = 4) |>
         left_join(perf, by = "coach_id")
+      # squad-fit diagnostic for every coach shown on the similarity grid
+      # (Docs/Squad_Fit_Gap_Design.md) — reuses the squad + formation values
+      # cr_score_team already built, one best-XI pass per coach shape
+      sq <- attr(sc, "squad"); fv <- attr(sc, "fvals")
+      sfit <- list()
+      for (cid in sim$coach_id) {
+        rg <- scorer$rigidity$rigidity[scorer$rigidity$coach_id == cid]
+        if (length(rg) == 0) rg <- scorer$mean_rigidity
+        sfit[[cid]] <- cr_squad_fit(sq, fv, scorer$profiles[[cid]], rg)
+      }
       team_rows[[ts]] <- list(
         team_season_id = ts, league_key = lg, season = season,
         team_level = lvl$team_level[match(ts, lvl$team_season_id)],
-        suggestions = top, similar = sim
+        suggestions = top, similar = sim, squad_fit = sfit
       )
       cat(sprintf("  %s scored (%d/%d in %s)\n",
                   teams$team_name[i], i, nrow(teams), lg))
@@ -1192,9 +1396,14 @@ cr_save_results <- function(scorer, payoff_folds, n_top = 60,
     archetype_labels = pa_archetype_labels
   )
 
+  # descriptive dossier for the suggestion drawer, restricted to the coaches
+  # that can appear on the site (the thriving similarity pool)
+  dossier <- cr_coach_dossier(scorer, unique(thriving$coach_id))
+
   out <- list(
     teams = team_rows,
     facts = facts,
+    dossier = dossier,
     builder = builder,
     meta = list(
       as_of = scorer$as_of, season = season, delta = scorer$delta,

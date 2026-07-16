@@ -70,6 +70,13 @@ A site page (`site/builder.html`) where the user assembles a custom XI — any o
 
 ---
 
+## Squad-Fit Gap ✓
+**Completed: July 15, 2026**
+
+A per-(coach, team) diagnostic embedded as an expandable "Squad fit" panel on each big-5 team page's coach-similarity cards: which of the squad's value a candidate coach's usual formations leave idle (bench players worth more than the cheapest starter his shape fields, rolled up by player archetype) and which positions those shapes can only fill with a poor positional match. Built entirely on the recommender's validated best-XI/eligibility machinery (`cr_best_xi_assign`, `cr_squad_fit`) — no new model, and deliberately no points claim (it explains the exploratory deployment layer in € and slots). Coach-differentiating and face-valid: a back-3/wing-back coach at Man City strands €100–193m of wide-creator value, a possession coach much less. Design: `Docs/Squad_Fit_Gap_Design.md`; session log: `Docs/Session_Log_2026-07-15.md`. Team-builder version deferred.
+
+---
+
 ## Website ✓
 **Completed: July 10, 2026**
 
