@@ -340,7 +340,7 @@ function drawerContent(m, s) {
   if (c && c.formations && c.formations.length) {
     wrap.append(el("div", { class: "sf-section-title" }, "Preferred formations"));
     const list = el("div", { class: "sf-forms" });
-    c.formations.forEach(f => {
+    c.formations.slice(0, 3).forEach(f => {
       list.append(el("div", { class: "sf-form-row" },
         el("span", { class: "sf-form-name" }, f.formation),
         el("span", { class: "sf-form-bar" },

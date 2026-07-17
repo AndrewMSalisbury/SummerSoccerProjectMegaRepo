@@ -31,6 +31,16 @@ function scaleLinear([d0, d1], [r0, r1]) {
   return f;
 }
 
+// 1st, 2nd, 3rd, 4th … 21st, 22nd — "1th" and "22th" are what a bare "th" gives
+function ordinal(n) {
+  const teens = n % 100 >= 11 && n % 100 <= 13;   // 11th, 12th, 13th, not 11st
+  if (teens) return `${n}th`;
+  if (n % 10 === 1) return `${n}st`;
+  if (n % 10 === 2) return `${n}nd`;
+  if (n % 10 === 3) return `${n}rd`;
+  return `${n}th`;
+}
+
 function niceStep(raw) {
   const mag = Math.pow(10, Math.floor(Math.log10(raw)));
   for (const m of [1, 2, 2.5, 5, 10]) if (raw / mag <= m) return m * mag;
@@ -328,6 +338,189 @@ export function lineChart(host, points, { fmt = String, color = S1 } = {}) {
         stroke: SURF, "stroke-width": 2 }),
       svgEl("text", { x: x(last.season), y: y(last.v) - 10, "text-anchor": "end",
         "font-size": 11, fill: INK2 }, fmt(last.v)));
+
+    clear(host).append(svg);
+  }
+  render();
+  onResize(host, render);
+}
+
+// ---------- coach strengths: offence / defence split ----------
+
+// Layer A of the descriptive profile: the coach's overperformance split into
+// goals scored above squad-value expectation and goals conceded below it.
+// The x domain is FIXED across coaches (and across both ranking cuts) so the
+// bars mean the same thing on every page, and so the two rows share one scale.
+// Defence bars are visibly shorter than attack bars for almost everyone: that
+// is the real finding (the coach effect is stronger on goals scored than on
+// goals conceded), not a scaling artifact — do not give the rows their own axes.
+const STRENGTH_DOMAIN = 0.26;
+
+export function strengthBars(host, s) {
+  const tt = tooltip();
+  const rows = [
+    { label: "Attack", v: s.off, sig: s.off_significant,
+      hint: "goals scored above expectation" },
+    { label: "Defence", v: s.def, sig: s.def_significant,
+      hint: "goals conceded below expectation" },
+  ];
+
+  function render() {
+    const W = measuredWidth(host);
+    const rowH = 44, barH = 20;
+    const m = { top: 10, right: 60, bottom: 28, left: 84 };
+    const H = m.top + rows.length * rowH + m.bottom;
+    const svg = chartSvg(W, H);
+    const x = scaleLinear([-STRENGTH_DOMAIN, STRENGTH_DOMAIN], [m.left, W - m.right]);
+
+    svg.append(svgEl("line", { x1: x(0), x2: x(0), y1: m.top, y2: H - m.bottom,
+      stroke: BASE, "stroke-width": 1 }));
+
+    rows.forEach((r, i) => {
+      const yTop = m.top + i * rowH + (rowH - barH) / 2;
+      const cy = yTop + barH / 2;
+      const over = r.v >= 0;
+      const x0 = Math.min(x(0), x(r.v)), x1 = Math.max(x(0), x(r.v));
+      const wBar = Math.max(1, x1 - x0);
+      const rr = Math.min(4, wBar);
+      const d = over
+        ? `M${x0},${yTop} H${x1 - rr} Q${x1},${yTop} ${x1},${yTop + rr} V${yTop + barH - rr} Q${x1},${yTop + barH} ${x1 - rr},${yTop + barH} H${x0} Z`
+        : `M${x1},${yTop} H${x0 + rr} Q${x0},${yTop} ${x0},${yTop + rr} V${yTop + barH - rr} Q${x0},${yTop + barH} ${x0 + rr},${yTop + barH} H${x1} Z`;
+      svg.append(svgEl("path", { d, fill: over ? POS : NEG }));
+
+      svg.append(svgEl("text", { x: m.left - 14, y: cy, "text-anchor": "end",
+        "dominant-baseline": "central", "font-size": 12.5, fill: INK2 }, r.label));
+      svg.append(svgEl("text", {
+        x: over ? x1 + 8 : x0 - 8, y: cy, "text-anchor": over ? "start" : "end",
+        "dominant-baseline": "central", "font-size": 11.5, fill: INK2,
+      }, fmtSigned(r.v)));
+
+      const hit = svgEl("rect", { x: 0, y: m.top + i * rowH, width: W,
+        height: rowH, fill: "transparent" });
+      hit.addEventListener("pointermove", e => tt.show(e, r.label, [
+        { label: r.hint, value: `${fmtSigned(r.v)} per game`,
+          color: over ? "#2a78d6" : "#e34948" },
+        { label: "vs FDR", value: r.sig ? "significant" : "not significant" },
+      ]));
+      hit.addEventListener("pointerleave", () => tt.hide());
+      svg.append(hit);
+    });
+
+    svg.append(svgEl("text", { x: x(0), y: H - 8, "text-anchor": "middle",
+      "font-size": 11, fill: MUTED },
+      "← below expectation  ·  goals per game  ·  above →"));
+
+    clear(host).append(svg);
+  }
+  render();
+  onResize(host, render);
+}
+
+// ---------- coach style fingerprint ----------
+
+// Layer B: the style of the teams a coach ran, as a percentile among the
+// profiled coaches (raw axis units are SDs of team-matches, where every coach
+// mean compresses toward zero and every fingerprint looks flat).
+// Deliberately ONE hue rather than the site's pos/neg pair: these axes have no
+// good/bad polarity — more possession is not better — and coloring them with
+// the above/below-expectation ramp would invent a verdict the layer does not
+// make. The 50th-percentile midline carries the "more or less than typical"
+// reading on its own.
+export function styleBars(host, axes) {
+  const tt = tooltip();
+
+  function render() {
+    const W = measuredWidth(host);
+    const rowH = 30, barH = 14;
+    const m = { top: 8, right: 44, bottom: 30, left: 148 };
+    const H = m.top + axes.length * rowH + m.bottom;
+    const svg = chartSvg(W, H);
+    const x = scaleLinear([0, 100], [m.left, W - m.right]);
+
+    axes.forEach((a, i) => {
+      const yTop = m.top + i * rowH + (rowH - barH) / 2;
+      const cy = yTop + barH / 2;
+
+      // full-range track: gives the 0-100 scale without a tick axis
+      svg.append(svgEl("rect", { x: x(0), y: yTop, width: x(100) - x(0),
+        height: barH, rx: 3, fill: GRID }));
+
+      const x0 = Math.min(x(50), x(a.pct)), x1 = Math.max(x(50), x(a.pct));
+      svg.append(svgEl("rect", { x: x0, y: yTop, width: Math.max(2, x1 - x0),
+        height: barH, rx: 3, fill: S1 }));
+
+      // coach-owned axes (design sec. 5) get a dot; the legend names them
+      if (a.coach_owned) {
+        svg.append(svgEl("circle", { cx: m.left - 130, cy, r: 3.5, fill: S1 }));
+      }
+      svg.append(svgEl("text", { x: m.left - 120, y: cy, "font-size": 12,
+        "dominant-baseline": "central", fill: INK2 }, a.label));
+      svg.append(svgEl("text", { x: x(100) + 8, y: cy, "font-size": 11.5,
+        "dominant-baseline": "central", fill: INK2 }, String(a.pct)));
+
+      const hit = svgEl("rect", { x: 0, y: m.top + i * rowH, width: W,
+        height: rowH, fill: "transparent" });
+      hit.addEventListener("pointermove", e => tt.show(e, a.label, [
+        { label: "percentile among coaches", value: String(a.pct), color: "#2a78d6" },
+        { label: "raw", value: `${fmtSigned(a.sd, 2)} SD` },
+      ]));
+      hit.addEventListener("pointerleave", () => tt.hide());
+      svg.append(hit);
+    });
+
+    // median line drawn over the bars so it stays readable
+    svg.append(svgEl("line", { x1: x(50), x2: x(50), y1: m.top,
+      y2: H - m.bottom, stroke: BASE, "stroke-width": 1 }));
+    svg.append(svgEl("text", { x: x(50), y: H - 8, "text-anchor": "middle",
+      "font-size": 11, fill: MUTED }, "← less  ·  typical coach  ·  more →"));
+
+    clear(host).append(svg);
+  }
+  render();
+  onResize(host, render);
+}
+
+// ---------- named-pole percentile spectrum ----------
+
+// One percentile on a scale whose ends are named, for a measure whose axis
+// label does not explain itself ("pressing height" reads as jargon; "deep
+// block ... high press" reads as football).
+// The marker rides a PERCENTILE scale, not a pitch: the underlying stat is the
+// share of possession won in the attacking third, ranked against other
+// coaches. Position along a drawn pitch would claim a physical location the
+// data does not contain — 98th percentile is not "wins it 98% of the way
+// upfield". Keep the poles as labels and the scale as rank.
+export function spectrumBar(host, { pct, leftLabel, rightLabel, label }) {
+  function render() {
+    const W = measuredWidth(host);
+    const H = 56;
+    const m = { left: 92, right: 92 };
+    const trackY = 16, trackH = 12;
+    const svg = chartSvg(W, H);
+    const x = scaleLinear([0, 100], [m.left, W - m.right]);
+
+    svg.append(svgEl("rect", { x: x(0), y: trackY, width: x(100) - x(0),
+      height: trackH, rx: 3, fill: GRID }));
+    // quartile ticks: enough scale to read the marker against, no tick labels
+    for (const q of [25, 50, 75]) {
+      svg.append(svgEl("line", { x1: x(q), x2: x(q), y1: trackY,
+        y2: trackY + trackH, stroke: BASE, "stroke-width": 1 }));
+    }
+
+    svg.append(svgEl("text", { x: x(0) - 10, y: trackY + trackH / 2,
+      "text-anchor": "end", "dominant-baseline": "central", "font-size": 12,
+      fill: MUTED }, leftLabel));
+    svg.append(svgEl("text", { x: x(100) + 10, y: trackY + trackH / 2,
+      "dominant-baseline": "central", "font-size": 12, fill: MUTED }, rightLabel));
+
+    // marker: 2px surface ring so it reads against the track at any position
+    svg.append(svgEl("circle", { cx: x(pct), cy: trackY + trackH / 2, r: 7,
+      fill: S1, stroke: SURF, "stroke-width": 2 }));
+    // keep the marker label inside the track's span at the poles
+    const anchor = pct <= 4 ? "start" : pct >= 96 ? "end" : "middle";
+    svg.append(svgEl("text", { x: x(pct), y: trackY + trackH + 18,
+      "text-anchor": anchor, "font-size": 11.5, fill: INK2 },
+      label ?? `${ordinal(pct)} percentile`));
 
     clear(host).append(svg);
   }

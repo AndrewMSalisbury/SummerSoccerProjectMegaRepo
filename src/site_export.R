@@ -69,6 +69,11 @@ se_write_json <- function(x, path) {
 
 se_num <- function(x, digits = 3) ifelse(is.na(x), NA, round(x, digits))
 
+# percentile rank (0-100) within a vector, midpoint convention for ties
+se_pct_rank <- function(x) {
+  round(100 * (rank(x, ties.method = "average") - 0.5) / length(x))
+}
+
 # --- load + precompute -------------------------------------------------------------
 
 se_load <- function() {
@@ -80,6 +85,8 @@ se_load <- function() {
     grades5  = readRDS("data/results/coach_grades_top5.rds"),
     grades14 = readRDS("data/results/coach_grades_14league.rds"),
     fit      = readRDS("data/results/archetype_fit.rds"),
+    str5     = readRDS("data/results/coach_strengths_top5.rds"),
+    str14    = readRDS("data/results/coach_strengths_14league.rds"),
     imgs     = readRDS("data/cache/coach_images.rds")
   )
   d$crests <- if (file.exists("data/cache/team_crests.rds")) {
@@ -103,6 +110,24 @@ se_load <- function() {
     readRDS("data/cache/player_images.rds")
   } else {
     data.frame(player_id = character(), local_path = character())
+  }
+
+  # Layer B style fingerprints (Docs/Coach_Descriptive_Profile_Design.md sec. 3).
+  # Axis units are SDs of team-matches, so coach means compress hard toward 0 —
+  # the pages show percentile among coaches instead (design sec. 3.3 display
+  # note). Profiles thinner than a season's worth of matches describe a
+  # caretaker spell rather than a coach, so they are dropped, and the
+  # percentiles are ranked within the surviving set: the reference class a
+  # reader is shown is the one the number is computed against.
+  d$style <- if (file.exists("data/results/coach_style.rds")) {
+    readRDS("data/results/coach_style.rds")
+  } else NULL
+  if (!is.null(d$style)) {
+    p <- d$style$profiles |> filter(total_games >= se_style_min_games)
+    for (ax in c(names(d$style$axes), "pressing_height")) {
+      p[[paste0(ax, "_pct")]] <- se_pct_rank(p[[ax]])
+    }
+    d$style$profiles <- p
   }
 
   d$res <- d$res |>
@@ -233,6 +258,86 @@ se_coach_summary <- function(name, rating, stints) {
 
 # --- coach pages -------------------------------------------------------------------
 
+# Layer A, the goals cut (Docs/Coach_Descriptive_Profile_Design.md sec. 2): the
+# coach's overperformance split into goals scored above what the squad's value
+# predicts and goals conceded below it. Read from the *same cut* as the headline
+# grade so the split and the grade describe one number, and gated on being
+# graded: this re-slices the BLUP, so it inherits the display certification bar
+# (save_coach_grades() in coach_attribution.R) rather than inventing its own.
+se_coach_strengths <- function(d, coach_id, rating) {
+  if (is.null(rating)) return(NULL)
+  tbl <- if (rating$cut == "top5") d$str5 else d$str14
+  s <- tbl[tbl$coach_id == coach_id, ]
+  if (nrow(s) != 1) return(NULL)
+  list(
+    cut         = rating$cut,
+    cut_label   = rating$cut_label,
+    off         = se_num(s$off_blup),
+    def         = se_num(s$def_blup),
+    tilt        = se_num(s$tilt),
+    edge        = se_num(s$edge),
+    off_significant = isTRUE(s$off_significant),
+    def_significant = isTRUE(s$def_significant),
+    n_stints    = s$n_stints,
+    total_games = s$total_games
+  )
+}
+
+# Layer B (design sec. 3): the style of the teams this coach ran, as percentiles
+# among the profiled coaches. NULL outside the big-5 SofaScore era or below the
+# se_style_min_games bar. `coach_owned` marks the two axes where phase 4 found
+# the coach explains more of the variance than the club does (design sec. 5) —
+# every other axis is more the club's than his, which is why the card may never
+# call this "his style".
+se_style_min_games <- 38
+se_style_coach_owned <- c("lineup_stability", "pressing")
+
+se_coach_style <- function(d, coach_id) {
+  if (is.null(d$style)) return(NULL)
+  p <- d$style$profiles
+  s <- p[p$coach_id == coach_id, ]
+  if (nrow(s) != 1) return(NULL)
+
+  axes <- lapply(names(d$style$axes), function(ax) list(
+    key         = ax,
+    label       = unname(d$style$axes[ax]),
+    pct         = s[[paste0(ax, "_pct")]],
+    sd          = se_num(s[[ax]], 2),
+    coach_owned = ax %in% se_style_coach_owned
+  ))
+
+  list(
+    axes        = axes,
+    n_pool      = nrow(p),
+    n_stints    = s$n_stints,
+    total_games = s$total_games,
+    n_clubs     = s$n_clubs,
+    seasons     = I(d$style$meta$seasons),
+    # season-level secondary descriptor: where the ball is won back. Cannot be
+    # split between two coaches of one team-season (possessionWonAttThird is
+    # absent from match_stats), so `blended` flags a profile that is
+    # substantially the club's number rather than this coach's.
+    pressing_height = list(
+      pct     = s$pressing_height_pct,
+      sd      = se_num(s$pressing_height, 2),
+      blended = s$height_blended_share > 0.5
+    )
+  )
+}
+
+# Preferred formations for the coach page: the recency-weighted formation
+# repertoire from recommender.rds$dossier. NULL for coaches without SofaScore
+# formation data (i.e. outside the big-5 similarity pool).
+se_coach_formations <- function(d, coach_id) {
+  x <- if (!is.null(d$rec)) d$rec$dossier[[coach_id]] else NULL
+  if (is.null(x) || !length(x$formations)) return(NULL)
+  list(
+    shapes = lapply(x$formations, function(f)
+      list(formation = f$formation, pct = round(100 * f$share))),
+    rigidity = se_num(x$rigidity, 2)
+  )
+}
+
 se_export_coaches <- function(d) {
   fit_by_coach <- split(d$fit$per_coach, d$fit$per_coach$coach_id)
 
@@ -273,6 +378,9 @@ se_export_coaches <- function(d) {
         n_clubs      = n_distinct(stints$club_num)
       ),
       rating = rating,
+      strengths = se_coach_strengths(d, coach_id, rating),
+      style = se_coach_style(d, coach_id),
+      formations = se_coach_formations(d, coach_id),
       stints = lapply(seq_len(nrow(stints)), function(i) {
         s <- stints[i, ]
         list(

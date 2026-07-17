@@ -314,7 +314,11 @@ main.container h2::before {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px 16px;
-  flex: 0 0 auto;
+  /* shrinkable: the widest detail line ("All leagues: A+ · rank 1 of 545 ·
+     BLUP +0.137") is wider than a 375px viewport, and flex: 0 0 auto made the
+     whole page scroll sideways on every graded coach at mobile widths */
+  flex: 0 1 auto;
+  min-width: 0;
 }
 .grade-letter {
   font-size: 44px;
@@ -383,6 +387,39 @@ main.container h2::before {
 .key-line { display: inline-block; width: 16px; height: 0; border-top: 2px solid; }
 .key-line.dashed { border-top-style: dashed; }
 .key-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+.key-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--series-1);
+}
+
+/* descriptive profile: pressing-height block (coach.js renderPressingHeight).
+   Inset from the nine style axes because it is a different measurement — per
+   season, not per match — and must not read as a tenth axis. */
+.ph-block {
+  margin-top: 14px;
+  padding: 12px 14px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--accent-wash);
+}
+.ph-title { font-weight: 600; font-size: 13.5px; }
+.ph-lede { margin: 4px 0 2px; font-size: 13px; color: var(--ink-2); }
+
+/* descriptive profile: Layer A lede + tilt chip (coach.js renderStrengths) */
+.strength-lede { margin: 0 0 12px; line-height: 1.5; }
+.tilt-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-wash);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 
 .viz-tooltip {
   position: fixed;

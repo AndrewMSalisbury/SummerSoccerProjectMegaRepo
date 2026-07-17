@@ -328,6 +328,115 @@ Career-history **plausibility filters** (never mixed into the score) let a club 
 
 ---
 
+## Part 8: What Are Coaches Good At, and What Makes Them Good? (Coach Descriptive Profile)
+
+**Finding: a coach's overperformance splits cleanly and defensibly into an attacking and a defensive half, and the style of his teams can be described precisely — but that style is mostly the club's, not his, and *nothing* about it predicts coaching quality once club size is accounted for. The third independent attempt to find a signal beyond the quality BLUP, and the third to come back empty.**
+
+Every coach page had answered *how good* with a single number and never said *good at what*. This part answers that (design: `Docs/Coach_Descriptive_Profile_Design.md`; implementation: `src/coach_strengths.R`, `src/coach_style.R`). It is built in three layers that sit at deliberately different points on the honesty gradient, and each is labeled with its own — the layers are **not** equally trustworthy and are not presented as if they were.
+
+### Layer A: where the edge comes from (defensible — on the site)
+
+The M3 model was re-fit on the **same right-hand side** (`log(norm_weighted_value)` + league + b-team) with goals-for-per-game and goals-against-per-game as the response, and the two head residuals attributed to coach stints through the identical M5 path — same coverage filter, same match-to-coach assignment, same games weighting, same BLUP shrinkage, same ≥3-stint FDR rule (reused verbatim, not re-implemented). Goals come from `matches.rds`, so this covers the full 2005–2024 span and all 14 leagues.
+
+This makes no new attribution leap: it re-slices a residual the project already trusts, which is why it is the one layer stated plainly on coach pages ("this coach's edge is defensive").
+
+- **Tie-back passes:** goal-difference edge vs the M4 points residual **r = 0.862** (top-5) / **0.872** (14-league), ≈ 0.59 points per goal of edge. At coach level the goal edge correlates **r = 0.823** with the published points BLUP.
+- **The coach effect is stronger on goals than on points.** The 14-league LRT for coach variance gives **χ² = 160.2** for offence (p ≈ 1e-36) and 60.5 for defence, against **χ² = 28.5** for the points model. Goals-for is a lower-noise coach signal than points — worth knowing for any future model.
+- Face-valid: Guardiola is top on both sides (+0.25 attack / +0.08 defence per game); Pulis and Bordalás anchor the defensive end; De Zerbi and Luis Enrique the attacking.
+- **Simeone is the instructive case.** His *goal* edge is ≈ 0 (−0.03) despite a B grade: his overperformance is in converting goal difference into points, which the split describes but does not explain. His coach page says so where the contradiction would otherwise sit unexplained.
+
+### The xG cut: process vs outcome (a recent-form lens — writeup only)
+
+Splitting the goals cut again using SofaScore shot data yields four per-game measures: **creation** (xG-for above value expectation) and **prevention** (xG-against below it) as *process*, **finishing** (goals − xG) and **shot-stopping** (xG-against − goals-against) as *outcome*.
+
+The **cross-source tie-back is the strongest check in this part**: the xG cut is built from SofaScore and the goals cut from Transfermarkt, and over 452 stints `creation + finishing` vs the goals cut's offensive residual gives **r = 0.949**, `prevention + shotstop` vs the defensive residual **r = 0.981**. Two independently-sourced pipelines agree — this is what would break first if the SofaScore→TM team map or the coach attribution were wrong.
+
+The design *asserted* that process repeats and outcome doesn't; it is now tested (lag-1, same club, consecutive seasons, 165 pairs):
+
+| measure | lag-1 r | reading |
+|---|---|---|
+| creation | **0.423** | the most repeatable — genuinely process |
+| prevention | 0.271 | repeatable |
+| finishing | 0.242 | **more persistent than assumed** |
+| shot-stopping | **−0.005** | pure noise, exactly as predicted |
+
+Finishing persisting at r = 0.24 rather than ~0 is most plausibly squad continuity (clubs keep their finishers) rather than coach skill — a reason to keep labelling finishing an unreliable *coach* signal, not to promote it. Squad value also predicts chance creation better than it predicts goals (R² 0.719 vs 0.641), consistent with goals being chances plus noise.
+
+Two data defects had to be handled and are worth recording: **27 of 5,330 xG-era events carry a full complement of shots but are missing their goal shots entirely** (0.5%, all in 2023), which would understate creation and inflate finishing — so an event counts only if its shotmap reconciles with the scoreline on both sides; and own goals sit in the shotmap credited to the benefiting side with no xG, landing wholly in finishing, which is where they belong.
+
+**This layer is not on the site.** Measured coverage is three seasons (2022–2024; 2021/22 is only ~40% covered and excluded), big-5 only: 452 stints, 57 coaches with ≥3 stints, none with ≥5, and **zero FDR-significant on any of the four measures**. It is a recent-form lens, never a career verdict, and a coach page is exactly where that distinction would be lost.
+
+### Layer B: the style fingerprint (descriptive-clean — on the site, carefully labeled)
+
+The M6 archetype recipe pointed at *team style* instead of player type: per-player-per-match → team-match → z-scored within league × season → coach-stint mean → games-weighted coach profile, over **36,018 team-matches** across all 50 big-5 league-seasons. Nine axes (possession, pressing intensity, directness, width, shot volume, chance quality, defensive solidity, set-piece reliance, lineup stability), each an **equal-weight mean of its members' z-scores** — deliberately not a PCA and not a fitted weighting: nothing here is trained against an outcome, so there is nothing to overfit and the axes stay readable.
+
+It is literally what the teams did, so it carries no causal content. Face validity is strong on every axis (possession: Luis Enrique, Guardiola, Xavi top, Allardyce bottom; set-piece reliance: Thomas Frank, Brentford's known specialism; directness: Bordalás, Dyche). Two caricatures were corrected by the data:
+
+- **"Guardiola presses high" resolves to *height*, not intensity.** He is ~0 on per-match pressing intensity and +1.5 SD on season-level pressing height — City make few defensive actions because opponents rarely hold the ball, yet win it high. The two measures correlate only r = 0.38 and are different traits.
+- **"Simeone: low possession, low block" is not supported.** He is 74th percentile on possession and dead average on pressing height. What *is* supported is solidity (94th), narrowness (13th on width) and shot selection (84th on chance quality).
+
+### The main Layer B result: team style is mostly the club's, not the coach's
+
+The design treated coach-vs-squad as a caveat to bolt on. It is the finding. Per axis, a games-weighted variance decomposition (`axis ~ (1|coach) + (1|club)`), plus how much of the fingerprint **travels** when a coach changes club vs how much the club **keeps** when it changes coach:
+
+| axis | coach var % | club var % | travels | persists | R² from squad archetype mix |
+|---|---|---|---|---|---|
+| possession | 11.6 | **69.2** | 0.55 | 0.82 | **0.69** |
+| pressing intensity | **30.9** | 23.6 | 0.34 | 0.47 | 0.12 |
+| directness | 24.8 | **52.1** | 0.52 | 0.71 | 0.51 |
+| width | 29.8 | 34.6 | 0.44 | 0.50 | 0.39 |
+| shot volume | 11.3 | **54.4** | 0.43 | 0.67 | 0.54 |
+| chance quality | 13.8 | 27.6 | 0.29 | 0.36 | 0.11 |
+| defensive solidity | 11.0 | **45.0** | 0.29 | 0.58 | 0.31 |
+| set-piece reliance | 12.9 | 24.7 | 0.25 | 0.29 | 0.22 |
+| lineup stability | **19.2** | 14.6 | **0.33** | 0.17 | 0.10 |
+
+Club variance beats coach variance on **7 of 9 axes**. The squad's archetype mix *alone* explains 69% of possession, 54% of shot volume, 51% of directness. A club under two *different* coaches (possession r = 0.82) looks far more alike than a coach at two *different* clubs (r = 0.55), and after residualizing on the squad's archetype mix the travel correlations collapse (possession 0.55 → 0.17). **Consequently the site labels every radar as the style of the teams this coach ran — never "his style".**
+
+**Two axes survive as genuinely the coach's**, and the site marks them:
+
+- **Lineup stability** — the only axis where coach variance beats club, the only one that travels better than it persists, 10% personnel-explained, and it still travels after residualization. Rotation is a decision, not a squad property. The design's hunch that this is "a real coach signature nobody visualizes" is confirmed.
+- **Pressing intensity** — the best tactical axis: highest coach share (30.9% vs the club's 23.6%), 12% personnel-explained, the only tactical axis still standing after residualization.
+
+*Method caveat, stated because it cuts against the headline:* travel-vs-persist is not a like-for-like ownership contest — consecutive coaches at one club inherit nearly the same squad, so `r_club > r_coach` is expected under *any* model where the squad matters. The variance decomposition estimates both effects at once and is the better instrument; it agrees on 7 of 9, which is why the conclusion stands. Neither check is causal: coaches are hired by clubs that already suit them (inflating travel), and the archetype mix is partly one the coach shaped (so the residual strips out some of his own signature). These are bounds, not an identified split.
+
+### Layer C: what makes coaches good? Nothing here does. (null — deliberately not on the site)
+
+The literal question. The M5 quality BLUP was regressed on the nine style axes plus rigidity across the **231 coaches** with both a top-5 BLUP and a fingerprint, games-weighted, with families pre-specified from the Layer B result rather than chosen from the data.
+
+**Every raw association is large and FDR-significant** — defensive solidity **+0.64**, shot volume +0.53, possession +0.52, chance quality +0.46, lineup stability −0.37, rigidity +0.25 (standardized). Taken at face value this is a rich "what makes coaches good" story, and it would have been the most shareable content the project ever produced. **All of it is artifact.** Four checks, each killing a different group:
+
+| check | question it asks | casualties |
+|---|---|---|
+| consistency across 4 specs | same sign and significant in raw / squad-residualized / club-controlled / graded-only? | pressing, directness, width, set-piece reliance |
+| separable from club level | can the axis be told apart from club size at all? | possession (**r = 0.86** with the coach's mean club value percentile), shot volume (0.81), solidity (0.74) |
+| restates the outcome | is the axis built from the thing the BLUP measures? | chance quality (+ solidity, shot volume again) |
+| within- vs between-coach | does the *same* coach do better when he does more of it? | **lineup stability — sign reverses** |
+
+**Nothing survives.** Rigidity alone is unkilled (+0.155 club-controlled, q = 0.043) — and only because it is a career constant with no within-coach variation, so the decisive check *cannot run on it*. That is an untested predictor, not a validated one, and it is recorded as "between-coach only; untestable" rather than allowed to pass by default. Three traps are worth stating so nobody re-walks them:
+
+- **The all-axes multivariable is a suppression trap.** It reports club level at β = **−0.60**, which reads as "big clubs underperform their value"; the bivariate is **+0.39**, the opposite. The tell that generalizes: possession's coefficient *rises* under a club control (0.517 → 0.568), which no genuine confound removal does. One axis + one control is the only interpretable spec.
+- **Lineup stability is a Simpson's paradox** — and it is the phase 4 coach-owned axis, so it was the one most likely to be believed. Between coaches, rotators grade higher (−0.373, q < 0.0001, in all four specs). Within a coach, *stability* associates with better seasons (**+0.131**, p < 0.0001); within a club, +0.110. The between-coach version is club sorting: the heaviest rotators are Heynckes, Tuchel, Allegri and Luis Enrique, all at top clubs with European fixture loads.
+- **Several "style" axes are performance restated.** Defensive solidity is built from shots conceded — a step on the path to conceding goals and dropping points. "Solid teams overperform" is a restatement, not a discovery.
+
+**The confound the layer runs aground on** is worth stating on its own: `r(club_pct, blup) = **+0.39**` — coaches at bigger clubs grade higher. Whether that is better coaches being hired by bigger clubs, or the value model under-predicting big clubs, **the BLUP cannot say** — and since the style axes are near-proxies for club size, every style association inherits that ambiguity. This is a fact about the published ranking, not about style, and it is untested.
+
+**There is therefore no Layer C block on the site** — only this null and the reason for it. The raw correlations are not shown as findings anywhere.
+
+### Why the null is the most valuable thing here
+
+This is the **third independent attempt to find something beyond the quality BLUP**, and the third to come back empty:
+
+| attempt | verdict |
+|---|---|
+| M6 coach-specific player-type fit (Part 6/7) | LRT p = 0.449 — not significant |
+| Recommender payoff validation (Part 7) | only the quality layer improves hiring forecasts |
+| Layer C style → quality (Part 8) | every association dies under scrutiny |
+
+Three different research directions, three different data sources, one consistent answer: **the coach signal this project can measure is a single quality number, and attempts to decompose it into something more actionable have not survived validation.** That consistency is worth more than any of the correlations would have been — and it is the reason the site ranks and describes coaches but does not pretend to explain them.
+
+---
+
 ## Limitations
 
 1. **Sample size for coach rankings:** Coach attribution (M4/M5) and the augmented model (Part 4) were computed on the original 5-league, 2015–2024 dataset. Re-running these on the expanded 15-league, 2005–2024 dataset would provide more stints per coach and sharpen individual rankings. *(M4/M5 have since been re-run on the expanded dataset — see Part 5. The Part 4 question — does coach identity improve out-of-sample prediction? — was re-tested on the expanded-era data in Part 7's payoff validation, on the harder target of new coach-club pairings, and holds: p = 0.016 in the realized-value framing.)*
@@ -338,7 +447,8 @@ Career-history **plausibility filters** (never mixed into the score) let a club 
 6. **No season fixed effects:** the pooled model produces small systematic imbalances in some league-seasons.
 7. **Attribution gaps (original 5-league analysis):** 226 matches (0.6%) had no coach coverage and were excluded from attribution. SC Freiburg 2018 has no coach data.
 8. **Archetype analysis (Part 6):** per-coach findings are exploratory throughout — within-coach correlations on 4–10 stints cannot survive FDR even with 149 coaches across five leagues; only the global composition test is confirmatory. Archetype granularity (11 types) is an interpretability choice over silhouette diagnostics, with split-half stability 0.62–0.92; 26.2% of classified minutes rely on a current-season fallback (100% in 2015, which has no prior season) — the global result strengthens under the strict-lagged sensitivity, and per-coach pairs were only highlighted when they recur in both specifications. The 2015/16–2024/25 window and big-5 scope are set by SofaScore coverage.
-9. **Coach recommender (Part 7):** team-specific suggestions exist only for big-5 clubs with a latest-season squad; every other club gets the quality-only leaderboard. The fit and deployment columns are exploratory — mechanically valid but not validated as forecast improvements — and the validation universe (realized appointments) is survivorship-biased toward fits clubs already chose, so the measurable fit signal is conservative. Kickoff formations miss in-match shape changes. Plausibility filters are career-history proxies, not availability: contracts, wages, and willingness are unmodeled. Coach nationality coverage depends on a slow, resumable Transfermarkt profile scrape and may be partial at any given export.
+9. **Descriptive profile (Part 8):** the three layers are not equally trustworthy and must not be read as one block. Layer A is a re-slice of the M4/M5 residual and is as trustworthy as the residual is — but goal difference maps to points monotonically and *noisily* (r = 0.86), so it characterises an edge without fully explaining it (Simeone: a B grade on a ≈ 0 goal edge). The xG cut spans only three big-5 seasons (2022–2024; 2021/22 excluded at ~40% coverage), has no coach with ≥5 stints and **nobody FDR-significant**, and is a recent-form lens, not a career verdict — it is deliberately kept off coach pages. Layer B is big-5 only (2015/16–2024/25), so coaches seen only in the Championship or Eredivisie get Layer A but no fingerprint, and no radar is fabricated for them; it describes the *team's* style, co-produced with the squad, and is only the coach's own on lineup stability and pressing intensity. Pressing *height* is season-level and cannot be split between two coaches of one team-season (58% of stints sit in a multi-coach season), so it ships flagged. Layer C is a **null**: every style→quality association fails at least one of four checks and none is shown as a finding. The site's style percentiles are ranked among the 256 coaches clearing a 38-game bar, so they differ slightly from percentiles quoted elsewhere against a ≥100-game reference class.
+10. **Coach recommender (Part 7):** team-specific suggestions exist only for big-5 clubs with a latest-season squad; every other club gets the quality-only leaderboard. The fit and deployment columns are exploratory — mechanically valid but not validated as forecast improvements — and the validation universe (realized appointments) is survivorship-biased toward fits clubs already chose, so the measurable fit signal is conservative. Kickoff formations miss in-match shape changes. Plausibility filters are career-history proxies, not availability: contracts, wages, and willingness are unmodeled. Coach nationality coverage depends on a slow, resumable Transfermarkt profile scrape and may be partial at any given export.
 
 ---
 
@@ -351,3 +461,5 @@ The rankings are consistent with external assessments of coaching quality. Only 
 Milestone 6 (Part 6) extends the picture from *how much* coaches outperform to *when*: performance above squad-value expectation is not neutral to squad composition. The mix of player types a coach inherits — measured from prior-season playing style, before the coach's own system can contaminate it — predicts the stint residual, a finding that replicated when the analysis grew from the PL pilot to all five leagues (p = 0.030; p = 0.0016 strict-lagged, with the wide-creator coefficient strengthening to t ≈ 3.3). Wide creators are the most valuable archetype per unit of squad value; destroyer-heavy squads underperform theirs most. Individual coach × player-type fits (Gasperini with man-marking centre-backs, Vieira with destroyers) are descriptively consistent across specifications but await more data for individual significance — the same sample-size frontier as the individual coach rankings.
 
 The coach recommender (Part 7) turns the model toward the decision it was always about: hiring. Its pre-registered validation delivered a sharp verdict — the coach quality signal survives the hardest test available (forecasting brand-new coach-club pairings out-of-sample, p = 0.016), while coach-specific fit and formation-deployment forecasts, despite passing their mechanical checks convincingly, add nothing detectable to hiring forecasts and ship as exploratory context only. The honest summary for a sporting director: the model can tell you *who the good coaches are* with validated confidence, can describe *which squads they have thrived with*, and can flag *whether your squad's value fits their shapes* — but the last two are judgment aids, not predictions.
+
+The descriptive profile (Part 8) asks the two questions a ranking never answers — *good at what?* and *what makes them good?* — and gets one clean answer and one instructive refusal. The first is defensible: overperformance splits into an attacking and a defensive half that ties back to the points residual at r = 0.86, and the coach effect turns out to be **stronger on goals than on points** (χ² = 160 vs 28), so every graded coach now carries an offence/defence tilt. The second does not survive contact with the data. Team style can be measured precisely, but it is mostly the *club's* — club variance beats coach variance on 7 of 9 axes and the squad's player-type mix alone explains 69% of possession — and every apparently large style→quality association (solidity +0.64, possession +0.52) dies under one of four checks, most of them because the style axes cannot be told apart from club size (possession correlates 0.86 with it). That makes three independent attempts to find a signal beyond the quality BLUP — coach × player-type fit, the recommender's fit and deployment layers, and now style — and three empty results. The project's honest final position is narrow and well-defended: **coaching quality is real, portable, measurable, and useful for forecasting a hire; it is a single number; and this data cannot yet say what it is made of.** Knowing precisely where the evidence stops is the result, not a shortfall of one.

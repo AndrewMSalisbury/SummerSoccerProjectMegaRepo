@@ -149,6 +149,27 @@ Lyon: back-3 shapes underuse wide creator/pressing forward/deep playmaker, thin
 at centre-back) in light + dark. Frontend-only (`team.js`, `site.css`); no
 re-export.
 
+## Part 7 — preferred formations on the coach page (2026-07-16)
+
+Andrew asked to add "preferred positions" to coach pages. Clarified (the term is
+ambiguous between formations and a TM position mix, with very different coverage
+— 81 vs 2,341 coaches): he chose **preferred formations**, same as the drawer,
+even though only the ~81 SofaScore-era big-5 pool coaches have the data (others
+omit the card).
+
+- **`coach_recommender.R`**: `cr_coach_dossier` now stores the **top 5**
+  formations (was 3) so the roomier coach page can show a fuller repertoire; the
+  team-page drawer slices back to 3 (`team.js`).
+- **`site_export.R`**: `se_coach_formations(d, coach_id)` reads the dossier and
+  ships `{shapes:[{formation,pct}], rigidity}` onto the coach JSON as
+  `formations` (NULL outside the pool).
+- **`coach.js`**: new `renderFormations` card between the career chart and the
+  player-type-fit card — meter bars (reusing the `.sf-form-*` styles) + a
+  `rigidityLabel` line; drops sub-1% tail shapes so no "0%" rows show.
+- **Regen + export**: reran `cr_save_results` (5 formations) and the site export.
+  Chromote QA in both themes — face-valid: Sarri 4-3-3 98% "sticks tightly",
+  Kovač 4-2-3-1 39% / 3-4-2-1 24% / … "adapts his shape to the squad".
+
 ## Files added/modified
 
 - `Docs/Squad_Fit_Gap_Design.md`, `Docs/Coach_Descriptive_Profile_Design.md` — new

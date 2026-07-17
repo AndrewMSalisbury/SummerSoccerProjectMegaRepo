@@ -87,61 +87,9 @@ cr_season_formations <- function(league_key, year) {
     select(event_ss_id, team_ss_id, formation, league, season_start_year)
 }
 
-# per-(event, team) coach attribution for one league-season — the events/
-# coaches part of cf_season_match_minutes() without the (large) match_stats
-# read, for callers that only need formations or match dates
-cr_season_match_coaches <- function(league_key, year) {
-  sid <- ss_big5_leagues[[league_key]]$seasons[[as.character(year)]]
-  league_season_id <- xx_league_season_id(cf_tm_league_ids()[[league_key]], year)
-
-  events <- pa_read("events", sid) |>
-    filter(status_type == "finished") |>
-    mutate(match_date = as.Date(as.POSIXct(start_timestamp,
-                                           origin = "1970-01-01",
-                                           tz = "Europe/London")))
-  appearances <- table(c(events$home_team_ss_id, events$away_team_ss_id))
-  league_team_ids <- as.numeric(names(appearances[appearances >= 10]))
-  events <- events |>
-    filter(home_team_ss_id %in% league_team_ids,
-           away_team_ss_id %in% league_team_ids)
-
-  ss_team_names <- events |>
-    transmute(team_ss_id = home_team_ss_id, team_name = home_team_name) |>
-    bind_rows(events |>
-                transmute(team_ss_id = away_team_ss_id,
-                          team_name = away_team_name)) |>
-    count(team_ss_id, team_name) |>
-    group_by(team_ss_id) |>
-    slice_max(n, n = 1, with_ties = FALSE) |>
-    ungroup() |>
-    select(team_ss_id, team_name)
-  tm_teams <- xx_data_cache$teams |>
-    filter(league_season_id == !!league_season_id)
-  team_map <- ss_crosswalk_team_map(ss_team_names$team_name, tm_teams) |>
-    bind_cols(ss_team_names |> select(team_ss_id))
-  if (any(is.na(team_map$team_season_id))) {
-    stop(league_key, " ", year, ": unmapped league team(s): ",
-         paste(team_map$team_name_ss[is.na(team_map$team_season_id)],
-               collapse = ", "))
-  }
-
-  team_matches <- events |>
-    select(event_ss_id, match_date, home_team_ss_id, away_team_ss_id) |>
-    pivot_longer(c(home_team_ss_id, away_team_ss_id), values_to = "team_ss_id") |>
-    left_join(team_map |> select(team_ss_id, team_season_id), by = "team_ss_id") |>
-    select(event_ss_id, match_date, team_ss_id, team_season_id)
-
-  team_matches |>
-    group_by(team_season_id) |>
-    group_modify(function(g, key) {
-      xx_assign_matches_to_coaches(
-        g |> mutate(match_id = event_ss_id),
-        xx_data_cache$coaches |> filter(team_season_id == key$team_season_id)
-      ) |> select(event_ss_id, match_date, team_ss_id, coach_id)
-    }) |>
-    ungroup() |>
-    mutate(league = league_key, season_start_year = year)
-}
+# NOTE: the per-(event, team) coach attribution helper this file used to define
+# (cr_season_match_coaches) moved to coach_fit.R as cf_season_match_coaches()
+# on 2026-07-16, so coach_strengths.R can share it. Behaviour is unchanged.
 
 # every team-match with its formation and the coach in charge, all leagues and
 # seasons. Slow (~2-3 min: coach attribution per league-season); cache the
@@ -150,7 +98,7 @@ cr_build_coach_formations <- function() {
   bind_rows(lapply(names(ss_big5_leagues), function(lg) {
     bind_rows(lapply(as.integer(names(ss_big5_leagues[[lg]]$seasons)),
                      function(yr) {
-      cr_season_match_coaches(lg, yr) |>
+      cf_season_match_coaches(lg, yr) |>
         inner_join(cr_season_formations(lg, yr),
                    by = c("event_ss_id", "team_ss_id", "league",
                           "season_start_year"))
@@ -462,6 +410,25 @@ cr_team_formation_values <- function(squad) {
          numeric(1))
 }
 
+# Players who make the max-value XI in AT LEAST ONE of the 22 shapes, i.e. the
+# players any coach in the repertoire universe could plausibly field. Everyone
+# else is squad depth: no shape in the data starts them, so no coach can be
+# said to strand them (see cr_squad_fit). Player ids, or NULL when the squad
+# can't field an XI at all.
+#
+# The "at least one of ALL 22" quantifier is load-bearing and must not be
+# narrowed to the coach's own repertoire: a player benched by Guardiola's
+# shapes but started by Allegri's IS stranded by Guardiola, and that contrast
+# is the entire coach-specific signal this diagnostic exists to show.
+cr_startable_players <- function(squad) {
+  ids <- lapply(names(cr_formation_slots), function(f) {
+    a <- cr_best_xi_assign(squad, f)
+    if (is.null(a)) character(0) else a$xi$player_id
+  })
+  u <- unique(unlist(ids))
+  if (length(u) == 0) NULL else u
+}
+
 # The deployed-value forecast (design sec. 4.2):
 #   deployable(C, T) = r x sum_f p(f|C) bestXI(T, f) + (1 - r) x max_f bestXI(T, f)
 # profile: named share vector over formation strings (cr_formation_profile);
@@ -503,8 +470,10 @@ cr_arch_label <- function(a) {
 #                    preferences + rigidity leave on the table (>= 0).
 #   strand           value left idle, rolled up by player archetype: bench
 #                    players worth MORE THAN THE CHEAPEST STARTER the coach's
-#                    shape fields (Andrew's chosen definition, 2026-07-15),
-#                    plus value played out of natural role (value x (1 - elig)).
+#                    shape fields (Andrew's chosen definition, 2026-07-15) AND
+#                    startable by some shape (cr_startable_players, 2026-07-16 —
+#                    see below), plus value played out of natural role
+#                    (value x (1 - elig)).
 #   gaps             slot types the coach's shapes can only fill with a stretch
 #                    player (assigned eligibility < `stretch`), with the best
 #                    available fit — the recruitment "thin at ..." list.
@@ -512,10 +481,26 @@ cr_arch_label <- function(a) {
 # p(f|C) >= min_share, renormalised), so a rigid coach is judged on his one
 # shape and a flexible coach on the blend he actually uses. Returns NULL when
 # the squad can't field 10 outfield players in any shape.
-cr_squad_fit <- function(squad, fvals, profile, rigidity,
+#
+# `startable` (cr_startable_players(squad), computed once per team by the
+# caller) restricts the strand to players some shape would field. Without it
+# the strand is dominated by a coach-INVARIANT floor and stops discriminating
+# between coaches, which is what it is for. Two facts drive this, both measured
+# on the 2024 squads on 2026-07-16:
+#   - the max-value XI is near formation-invariant (Man City: any two of the 22
+#     shapes share 8-10 of 10 outfield starters; 24 of 36 players start in NO
+#     shape), because the XI maximises value and eligibility is broad; and
+#   - rep_w sums to 1, so a player benched in every shape contributes his FULL
+#     value to every coach identically.
+# Together those put e.g. a flat "destroyer EUR40m" (Nico Gonzalez, started by
+# 0 of 22 shapes) on all 81 Man City coaches, and made 89% of a team's coaches
+# share the same top strand label site-wide. Depth is a property of the squad,
+# not of the coach reading the panel.
+cr_squad_fit <- function(squad, fvals, profile, rigidity, startable = NULL,
                          min_share = 0.10, stretch = 0.5, n_show = 3,
                          strand_floor = 5e6) {
   if (all(is.na(fvals))) return(NULL)
+  if (is.null(startable)) startable <- cr_startable_players(squad)
   vmax <- max(fvals, na.rm = TRUE)
 
   if (is.null(profile)) {
@@ -545,7 +530,8 @@ cr_squad_fit <- function(squad, fvals, profile, rigidity,
     a <- cr_best_xi_assign(squad, f)
     if (is.null(a)) next
     cheapest_starter <- min(a$xi$value)
-    st <- a$bench[a$bench$value > cheapest_starter, , drop = FALSE]
+    st <- a$bench[a$bench$value > cheapest_starter &
+                    a$bench$player_id %in% startable, , drop = FALSE]
     for (j in seq_len(nrow(st)))
       strand <- addv(strand, cr_arch_label(st$archetype[j]), w * st$value[j])
     oor <- a$xi[a$xi$elig < 1, , drop = FALSE]
@@ -1254,7 +1240,7 @@ cr_similar_coaches <- function(profiles, shares, min_stints = 3) {
 # first). Purely descriptive — no residual/quality claim beyond what the drawer
 # already shows. `coach_ids` restricts the dossier to the coaches actually shown
 # on the site (the similarity pool) so recommender.rds stays lean.
-cr_coach_dossier <- function(scorer, coach_ids, n_formations = 3, n_teams = 6) {
+cr_coach_dossier <- function(scorer, coach_ids, n_formations = 5, n_teams = 6) {
   cr14 <- readRDS("data/results/coach_residuals_14league.rds") |>
     filter(coach_id %in% coach_ids)
 
@@ -1361,11 +1347,13 @@ cr_save_results <- function(scorer, payoff_folds, n_top = 60,
       # (Docs/Squad_Fit_Gap_Design.md) — reuses the squad + formation values
       # cr_score_team already built, one best-XI pass per coach shape
       sq <- attr(sc, "squad"); fv <- attr(sc, "fvals")
+      stb <- cr_startable_players(sq)   # squad-level; once per team, not per coach
       sfit <- list()
       for (cid in sim$coach_id) {
         rg <- scorer$rigidity$rigidity[scorer$rigidity$coach_id == cid]
         if (length(rg) == 0) rg <- scorer$mean_rigidity
-        sfit[[cid]] <- cr_squad_fit(sq, fv, scorer$profiles[[cid]], rg)
+        sfit[[cid]] <- cr_squad_fit(sq, fv, scorer$profiles[[cid]], rg,
+                                    startable = stb)
       }
       team_rows[[ts]] <- list(
         team_season_id = ts, league_key = lg, season = season,

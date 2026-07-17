@@ -77,6 +77,15 @@ A per-(coach, team) diagnostic embedded as an expandable "Squad fit" panel on ea
 
 ---
 
+## Coach Descriptive Profile ✓
+**Completed: July 16, 2026**
+
+Moves the site beyond *ranking* coaches to *characterizing* them, in three layers at deliberately different points on the honesty gradient. **Layer A (defensible):** the M4/M5 overperformance residual split into an attacking and a defensive half by re-fitting M3 with goals-for/against on the same right-hand side and attributing through the identical M5 path — full 2005–2024 span, all 14 leagues; ties back to the points residual at r = 0.862 and reveals that **the coach effect is stronger on goals than on points** (LRT χ² = 160.2 vs 28.5). An xG cut splits it again into process (creation, lag-1 r = 0.42) and outcome (shot-stopping, r = −0.005), validated across sources against the TM-built goals cut at r = 0.949/0.981. **Layer B (descriptive-clean):** a nine-axis style fingerprint over 36,018 big-5 team-matches — whose main result is that team style is mostly the *club's*: club variance beats coach variance on 7 of 9 axes and the squad's archetype mix alone explains 69% of possession, leaving only **lineup stability** and **pressing intensity** as genuinely the coach's. **Layer C (null):** every style→quality association is large and FDR-significant and *none* survives four checks — the strong axes are inseparable from club size (possession r = 0.86 with club value percentile), several restate the outcome, and lineup stability reverses sign within-coach. The third independent attempt to find a signal beyond the quality BLUP, and the third to come back empty.
+
+Shipped to coach pages: the goals cut and the style fingerprint, each carrying its layer's label. Held back by design: the xG cut (3 seasons, nobody significant — a lens, not a verdict) and Layer C (a null; its raw correlations must never render as findings). Design: `Docs/Coach_Descriptive_Profile_Design.md`; pipeline: `src/coach_strengths.R`, `src/coach_style.R`; findings: `Summary_of_Findings.md` Part 8; session logs: `Docs/Session_Log_2026-07-16.md` (analysis), `Docs/Session_Log_2026-07-16b.md` (site).
+
+---
+
 ## Website ✓
 **Completed: July 10, 2026**
 

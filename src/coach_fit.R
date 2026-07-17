@@ -89,6 +89,66 @@ cf_player_archetypes <- function() {
 
 # --- per-match minutes under each coach --------------------------------------------
 
+# per-(event, team) coach attribution for one league-season — the events/
+# coaches part of cf_season_match_minutes() without the (large) match_stats
+# read, for callers that only need formations, match dates, or match-level
+# SofaScore aggregates. Same playoff filter and team mapping as its sibling.
+# (Lived in coach_recommender.R as cr_season_match_coaches() until 2026-07-16;
+# moved here so coach_strengths.R can share it without depending upward on the
+# recommender.)
+cf_season_match_coaches <- function(league_key, year) {
+  sid <- ss_big5_leagues[[league_key]]$seasons[[as.character(year)]]
+  league_season_id <- xx_league_season_id(cf_tm_league_ids()[[league_key]], year)
+
+  events <- pa_read("events", sid) |>
+    filter(status_type == "finished") |>
+    mutate(match_date = as.Date(as.POSIXct(start_timestamp,
+                                           origin = "1970-01-01",
+                                           tz = "Europe/London")))
+  appearances <- table(c(events$home_team_ss_id, events$away_team_ss_id))
+  league_team_ids <- as.numeric(names(appearances[appearances >= 10]))
+  events <- events |>
+    filter(home_team_ss_id %in% league_team_ids,
+           away_team_ss_id %in% league_team_ids)
+
+  ss_team_names <- events |>
+    transmute(team_ss_id = home_team_ss_id, team_name = home_team_name) |>
+    bind_rows(events |>
+                transmute(team_ss_id = away_team_ss_id,
+                          team_name = away_team_name)) |>
+    count(team_ss_id, team_name) |>
+    group_by(team_ss_id) |>
+    slice_max(n, n = 1, with_ties = FALSE) |>
+    ungroup() |>
+    select(team_ss_id, team_name)
+  tm_teams <- xx_data_cache$teams |>
+    filter(league_season_id == !!league_season_id)
+  team_map <- ss_crosswalk_team_map(ss_team_names$team_name, tm_teams) |>
+    bind_cols(ss_team_names |> select(team_ss_id))
+  if (any(is.na(team_map$team_season_id))) {
+    stop(league_key, " ", year, ": unmapped league team(s): ",
+         paste(team_map$team_name_ss[is.na(team_map$team_season_id)],
+               collapse = ", "))
+  }
+
+  team_matches <- events |>
+    select(event_ss_id, match_date, home_team_ss_id, away_team_ss_id) |>
+    pivot_longer(c(home_team_ss_id, away_team_ss_id), values_to = "team_ss_id") |>
+    left_join(team_map |> select(team_ss_id, team_season_id), by = "team_ss_id") |>
+    select(event_ss_id, match_date, team_ss_id, team_season_id)
+
+  team_matches |>
+    group_by(team_season_id) |>
+    group_modify(function(g, key) {
+      xx_assign_matches_to_coaches(
+        g |> mutate(match_id = event_ss_id),
+        xx_data_cache$coaches |> filter(team_season_id == key$team_season_id)
+      ) |> select(event_ss_id, match_date, team_ss_id, coach_id)
+    }) |>
+    ungroup() |>
+    mutate(league = league_key, season_start_year = year)
+}
+
 # For one league-season: every (match, team, player) minutes record, with the
 # TM team_season_id and the coach in charge on the match date.
 cf_season_match_minutes <- function(league_key, year) {

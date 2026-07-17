@@ -20,6 +20,9 @@ claim. Settled with Andrew before the build (2026-07-15):
   stranded when he is worth more than the cheapest player the coach's shape
   actually starts (§3.3), plus value played out of natural role. (Self-calibrating
   to the squad; a deep squad legitimately benches value, stated as a limitation.)
+  **Amended 2026-07-16 (§3.3a): and startable by at least one of the 22 shapes.**
+  The "deep squad legitimately benches value" limitation anticipated here turned
+  out to dominate the panel rather than sit beside it — see §3.3a.
 - **Team builder:** deferred to a follow-up (§4 note); this cut is team-pages only.
 
 ---
@@ -134,6 +137,66 @@ player's lagged M6 archetype, or TM-position bucket on fallback). Output: a
 ranked list like *"wide-creator: €140m largely stranded — this coach's shapes
 field 0.7 W slots on average."* This is the "Lookman/De Ketelaere in a 3-5-2"
 story the recommender already noticed for S. Inzaghi at Atalanta, made explicit.
+
+### 3.3a Startable filter — as-built amendment (2026-07-16, binding)
+
+Andrew, from the shipped site: *"They are showing nearly identical positions and
+value left out of the squad despite different formations."* He was right, and the
+cause is structural, not a coding error.
+
+Two facts, measured on the 2024 squads:
+
+1. **The max-value XI is near formation-invariant.** On Man City, any two of the
+   22 shapes share **8–10 of 10** outfield starters (median 9); **6** players
+   start in all 22 shapes and **24 of 36 start in none**. The XI maximises value
+   and the eligibility matrix is broad, so the shape moves a slot or two, never a
+   team.
+2. **`rep_w` sums to 1**, so a player benched in *every* shape contributes
+   `Σ_f w_f · value = value` — his **full value, identically, to every coach**,
+   whatever his repertoire.
+
+Together those put a flat `destroyer €40m` (Nico González, started by 0 of 22
+shapes) on **all 81** Man City coaches, with Bernardo Silva (€38m, also 0 of 22)
+making up an invariant €78m floor — **40–50% of every coach's strand total**.
+Site-wide, **88.9%** of a team's coaches shared the same *top* strand label
+(Q1 74%). The panel was answering "how deep is this squad?" while its position in
+a per-coach drawer promised "how does this coach differ?".
+
+**Fix (option 1 of 3, chosen by Andrew):** `cr_startable_players(squad)` — the
+players who make the max-value XI in **at least one of the 22 shapes** — and the
+strand counts only bench players in that set. A player no shape in the data would
+start is squad depth; no coach can be said to strand him.
+
+**The quantifier is load-bearing and must not be narrowed to the coach's own
+repertoire.** A player benched by Guardiola's shapes but started by Allegri's
+*is* stranded by Guardiola — that contrast is the entire coach-specific signal
+this diagnostic exists to show. Filtering per-coach would delete exactly what we
+are trying to expose.
+
+Measured effect on the shipped JSON:
+
+| | before | after |
+|---|---|---|
+| same top strand label (median) | 88.9% | **77.8%** |
+| same top strand label (Q1) | 74.1% | **64.2%** |
+| distinct signatures per team (median, of 81) | 36.5 | 34.5 |
+| strand € retained | — | ~74% |
+| `gaps` list unaffected | 23.1% | 23.1% |
+
+**This is a partial fix and should not be recorded as a solved problem.** Top-label
+agreement is still ~78%, because the remaining sameness is *real*: the same one or
+two expensive attackers genuinely sit outside most shapes. Face validity on Man
+City — Guardiola `box striker €75m · advanced creator €31m`, Conte `box striker
+€65m · advanced creator €52m`, Allegri `advanced creator €120m` alone (his 3-5-2
+fields two strikers, so Marmoush stops being stranded at all). That contrast was
+previously invisible under the flat €40m.
+
+**Known consequence, accepted:** on squads whose whole value range sits near the
+€5m `strand_floor` the strand can empty entirely (Venezia: max player value
+€8.5m; 70 of 81 drawers now show nothing). This is a *correction* — every euro
+Venezia's old panel displayed was a depth player no shape would start — and the
+frontend already degrades to "Natural fits across the pitch…". Do not "restore"
+those numbers by dropping the filter.
 
 ### 3.4 Slot/archetype gaps (what the coach then needs)
 

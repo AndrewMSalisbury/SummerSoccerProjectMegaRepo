@@ -84,12 +84,141 @@ The `weighted_team_value` formula: for each player, `player_market_value_euro ×
 
 Later milestones build on this in a source chain — `coach_attribution.R` → `residual_analysis.R` → `model_comparison.R` → `tabler.R` (with `source_data.r` sourced manually first): `model_comparison.R` (M3, `run_milestone3()`), `residual_analysis.R` (M4, `run_milestone4()`), `coach_attribution.R` (M5, `run_milestone5()`), `augmented_model.R` (coach BLUP CV). All of M5 weights stints by `n_games` (since 2026-07-14): short caretaker stints carry far noisier per-game residuals, and games-weighted BLUPs predicted held-out stints better than unweighted ones. This covers the mixed model, the per-coach mean residuals, and the significance t-tests (which require ≥ 3 stints — df = 1 SEs can collapse when two stints agree by luck). The mixed model's residual variance component is therefore per-game — the recommender's posterior-SD constants in `cr_build_scorer()` must be refreshed whenever M5 is refit. Separately, `save_coach_grades()` applies a **display certification bar** (≥ 109 career games in the cut, or FDR-significant): sub-bar coaches keep their BLUP and stay in the mixed model but get no grade, no leaderboard slot, and no recommender-pool entry (the pool in `cr_score_team()` filters to graded coaches). The bar is presentational — every score-side penalty for thin/selection-flattered records (weight floors, truncation-share and gap penalties) tested worse out-of-sample, so the ranking math must not be "corrected" for it.
 
+### Coach Strengths Layer (`src/coach_strengths.R`)
+
+Layer A of the coach descriptive profile (design: `Docs/Coach_Descriptive_Profile_Design.md`;
+phase 1 shipped 2026-07-16; **the goals cut is on coach pages** since phase 6 —
+the xG cut is writeup-only, see below). `cs_` prefix, pure
+cache-reader. Splits the M4/M5 overperformance residual into an attacking and a defensive
+half by re-fitting the M3 model with goals-for-per-game / goals-against-per-game as the
+response on the **same right-hand side**, then attributing to coach stints through the M5
+path. Goals-based, so it covers the full 2005–2024 span and all 14 leagues (no SofaScore
+dependency). `run_coach_strengths("top5" | "14league")` runs everything and writes
+`data/results/coach_strengths_<cut>.rds` (per coach: `off_blup`, `def_blup`, `tilt` =
+off − def, `edge` = off + def, plus games-weighted means + FDR significance) and
+`coach_goal_residuals_<cut>.rds` (the stint table). Re-run after any M4/M5 refit.
+
+Because `cs_fit_head_blups()` / `cs_head_stats()` reuse `fit_mixed_model()`,
+`compute_coach_stats()`, and `add_significance()` verbatim (by renaming the head residual
+to the column those functions expect), the games weighting, BLUP shrinkage and ≥3-stint FDR
+rule are the M5 ones by construction — don't fork them. `xx_filter_value_coverage()` in
+`coach_attribution.R` is the shared coverage filter for the same reason. **Honesty label
+(design §0): defensible** — it re-slices a residual the project already trusts and makes no
+new attribution leap, so an offence/defence tilt can be stated plainly (unlike the fit and
+style layers). The 14-league offence fit emits an lme4 `max|grad|` convergence warning that
+is a verified false positive (bobyqa reaches the identical optimum) — do not switch
+optimizers to silence it.
+
+**The xG cut** (phase 2, same file, shipped 2026-07-16): `run_coach_xg_strengths()` splits
+the goals cut into process and outcome — `creation` (xG-for above value expectation) and
+`prevention` (head-modelled) vs `finishing` (goals − xG) and `shotstop` (xG-against −
+goals-against, within-team). Writes `coach_xg_strengths.rds` + `coach_xg_residuals.rds`
+(no cut suffix — xG is big-5 only). Reads SofaScore shots and joins through
+`cf_season_match_coaches()`. Facts that will bite if forgotten, all verified 2026-07-16:
+
+- **xG era = 2022–2024 only** (`cs_xg_seasons`). 2021/22 is ~40% covered, not "partial but
+  usable", and is excluded; nothing before has xG.
+- **An event counts only if its shotmap reconciles with the scoreline on both sides.** 27 of
+  5,330 xG-era events (0.5%, all 2023) carry ~21 shots but are missing their goal shots —
+  including them understates creation and inflates finishing. A reconciliation check that
+  conditions on events *having* goal shots will not catch this.
+- `shots` carries its own `is_home`, so the shooting team comes from the event's home/away
+  ids — the `match_stats$team_ss_id` caveat does not apply. **Own goals** sit in the shotmap
+  credited to the *benefiting* side, named for the defender, with no xG; they land in
+  finishing by construction, which is correct.
+- **3 seasons is a hard ceiling:** 452 stints, 57 coaches with ≥3 stints, none with ≥5,
+  **zero FDR-significant**. Never present this layer as a career verdict; it is a recent-form
+  lens over the big 5 and needs a games bar for any ranking.
+- Repeatability (lag-1, same club): creation 0.42, prevention 0.27, finishing 0.24,
+  shot-stopping −0.005. Finishing persists more than the design assumed (squad continuity,
+  not coach skill) — keep labelling it an unreliable coach signal.
+- Cross-source tie-back (SofaScore xG vs TM goals cut): r = 0.949 / 0.981 over 452 stints.
+  This is the check that breaks first if the SofaScore→TM team map or attribution regresses.
+
+### Coach Style Layer (`src/coach_style.R`)
+
+Layers B and C of the coach descriptive profile (design: `Docs/Coach_Descriptive_Profile_Design.md`;
+phases 3–5 shipped 2026-07-16; **Layer B is on coach pages** since phase 6, Layer C
+deliberately is not). `sy_` prefix, pure
+cache-reader. Sources `coach_recommender.R` (not `coach_fit.R` directly) for `cr_rigidity()`
+/ `cr_build_coach_formations()`, which Layer C needs. The M6 archetype recipe pointed at
+*team style* instead of player type:
+per-player-per-match → team-match → z-score within league × season → coach-stint mean →
+games-weighted coach profile. `run_coach_style()` writes `data/results/coach_style.rds`
+(`$profiles`, `$stints`, `$axes`, `$meta`). Big-5 only, 2015/16–2024/25 — coaches seen only
+outside the big 5 get Layer A but **no fingerprint; don't fabricate a radar**.
+
+Nine axes, each an **equal-weight mean of its members' z-scores** (not a PCA, not a fitted
+weighting — nothing is trained against an outcome here, so there's nothing to overfit):
+possession, pressing intensity, directness, width, shot volume, chance quality, defensive
+solidity, set-piece reliance, lineup stability. **Honesty label (design §0):
+descriptive-clean** — it is literally what the team did, with no causal content — but it is
+the *team's* style, co-produced with the squad (design §5); never "X is a possession coach"
+in the abstract.
+
+**Phase 4 (`run_coach_vs_squad()` → `coach_style_vs_squad.rds`) is binding on how this may
+be presented.** Team style is mostly the **club's**, not the coach's: club variance exceeds
+coach variance on **7 of 9 axes** (possession 69% club vs 12% coach), the squad's archetype
+mix alone explains 69% of possession / 54% of shot volume / 51% of directness, and a club
+under two *different* coaches (possession r = 0.82) looks more alike than a coach at two
+*different* clubs (r = 0.55). **A radar must be labelled as the style of the teams this coach
+ran — never "his style".** Only two axes survive as genuinely the coach's: **lineup
+stability** (coach 19.2% > club 14.6%, the only axis that travels better than it persists,
+10% personnel-explained, survives residualization) and **pressing intensity** (coach 30.9% >
+club 23.6%, 12% personnel-explained). Everything else collapses once the squad's archetype
+mix is removed (possession travel 0.55 → 0.17). Method caveat that cuts against the headline:
+the travel-vs-persist pair is not like-for-like (consecutive coaches at a club inherit the
+same squad), so the variance decomposition carries the verdict — it agrees on 7 of 9.
+**Display note:** axis units are SDs of team-matches, so coach means compress toward 0
+(Simeone's 92nd-pct solidity is only +0.28 SD) — map to percentile among coaches, not raw SD.
+
+**Layer C (`run_style_quality()` → `coach_style_quality_top5.rds`, phase 5, shipped
+2026-07-16) is a NULL, and that is binding.** It regresses the M5 quality BLUP on the
+nine axes + `cr_rigidity` across 231 coaches (games-weighted). Every raw association is
+large and FDR-significant — defensive solidity +0.64, possession +0.52, lineup stability
+−0.37 — and **not one survives**. Four checks, each killing a different group: consistency
+across 4 specs (kills pressing, directness, width, set-pieces); separability from club
+size (kills possession — **r = 0.86 with the coach's mean club value percentile** — shot
+volume, solidity); outcome restatement (kills chance quality; solidity is built from shots
+conceded); and **within- vs between-coach** (kills lineup stability, which *reverses sign*:
+−0.37 between coaches but **+0.13 within** a coach and +0.11 within a club — the between
+version is club sorting, the big rotators being Heynckes/Tuchel/Allegri at European-fixture
+clubs). Only rigidity is unkilled, and only because a career constant has no within-coach
+variation to test — recorded as "between-coach only; untestable", not as a pass. Traps to
+not re-walk: the all-axes multivariable is a **suppression trap** (`club_pct` flips from
+r = +0.39 bivariate to β = −0.60 partial, reading as "big clubs underperform"; the tell is
+possession's β *rising* under a club control, 0.517 → 0.568), so one axis + one control is
+the only interpretable spec; and `r(club_pct, blup) = +0.39` means the BLUP cannot
+distinguish "better coaches are hired by bigger clubs" from "the value model under-predicts
+big clubs". **Do not ship a style→quality story or "re-examine" these correlations without
+redoing all four checks.** glmnet is not installed; `sy_ridge_cv()` is a dependency-free
+weighted ridge used as a stability check only.
+
+Field-availability facts, verified 2026-07-16 — the two caches disagree and the docs
+are easy to misread:
+
+- **CLAUDE.md's "`outfielderBlocks`/`ballRecovery` only from 2023/24" is true of the SEASON
+  cache (`stats_<sid>.rds`) only.** In `match_stats` `ballRecovery` is populated in all 50
+  league-seasons, so this layer uses it. The design's inherited "do not use" doesn't apply.
+- **The reverse trap: `possessionWonAttThird` is absent from `match_stats` entirely** (season
+  cache only). So pressing *height* cannot be attributed to a stint — the per-match axis is
+  pressing **intensity** (a PPDA proxy), and `pressing_height` ships as a season-level
+  secondary descriptor with a `height_blended` flag wherever the team-season had >1 coach.
+- `match_stats$team_ss_id` matches the real match side only **41.5%** of the time — always
+  derive the side from `is_home` + the event's home/away ids. `substitute == FALSE` gives the
+  starting XI exactly (11 per side).
+- Counting conventions drift over the decade (ballRecovery 5.0 → 3.8 per player-match,
+  interceptions 2.2 → 1.5). Z-scoring within league × season absorbs it — that's why the
+  design insists on it, so don't z-score across seasons.
+- Shot coordinates: attacked goal at (0, 50), and x/y are both 0–100 but span different
+  physical distances — scale to metres (×1.05, ×0.68) before computing shot distance.
+
 ### M6 Archetype Layer (`src/player_archetypes.R`, `src/coach_fit.R`)
 
 The Milestone 6 coach/player-type fit analysis. Pure cache-readers (no scraping, no chromote):
 
 - `player_archetypes.R` (`pa_` prefix) — per-player-season style features from the SofaScore caches (all big-5 leagues) and k-means archetype clustering within D/M/F position groups (11 archetypes, labels in `pa_archetype_labels` — big-5 semantics as of 2026-07-12, incl. the wing-back archetype). `run_archetypes()` rebuilds `data/cache/sofascore/archetypes.rds`. Features are style-only (no goals/ratings/xG) and z-scored within league × season × position group.
-- `coach_fit.R` (`cf_` prefix) — lagged archetype assignment (cross-league; current-season fallback for players new to the big-5, flagged), minutes-weighted archetype shares per coach stint, join to M5 partial residuals, global mixed model + per-coach tests + strict-lagged sensitivity. `cf_run_analysis()` runs everything; sources `coach_attribution.R`, `player_archetypes.R`, `sofascore_crosswalk.r`.
+- `coach_fit.R` (`cf_` prefix) — lagged archetype assignment (cross-league; current-season fallback for players new to the big-5, flagged), minutes-weighted archetype shares per coach stint, join to M5 partial residuals, global mixed model + per-coach tests + strict-lagged sensitivity. `cf_run_analysis()` runs everything; sources `coach_attribution.R`, `player_archetypes.R`, `sofascore_crosswalk.r`. It also owns the SofaScore↔TM↔coach join spine used by the layers above it: `cf_season_match_minutes()` and `cf_season_match_coaches()` (the latter lived in `coach_recommender.R` as `cr_season_match_coaches` until 2026-07-16) — both carry the relegation-playoff filter and the greedy one-to-one team map.
 
 Data conventions that will bite if forgotten: SofaScore **shot coordinates put the attacked goal at (0, 50)** (heatmaps attack toward x = 100); **`match_stats$team_ss_id` is the player's club at scrape time, not the match team** — derive the match side from `is_home` + the event's home/away ids; season stat fields `outfielderBlocks`/`ballRecovery` exist only from 2023/24 and must not be used as features; **one SofaScore team id can carry several name spellings within a season** and league events include relegation playoffs against lower-division clubs — team mapping goes through `ss_crosswalk_team_map()` (greedy one-to-one), never plain best-overlap.
 
@@ -97,7 +226,9 @@ Data conventions that will bite if forgotten: SofaScore **shot coordinates put t
 
 Answers "who is the best coach for this team?" (design: `Docs/Coach_Recommender_Design.md`). `cr_` prefix, pure cache/results reader, sources the `coach_fit.R` chain. Key pieces: hand-mapped slots for all 22 observed formation strings (`cr_formation_slots`); recency-weighted coach formation profiles (δ = 0.3, chosen out-of-sample) + rigidity; archetype → slot eligibility matrix with TM-position fallback and a greedy+swaps max-value XI (`cr_best_xi_value`); random-slope fit model on three composition axes (creators / spine / wing-back — NOT significant, LRT p = 0.449, kept under shrinkage); `cr_score_team()` decomposes uplift into quality / fit / deployment; `cr_payoff_validation()` is the pre-registered LOSO test.
 
-**Squad-fit gap diagnostic** (`cr_squad_fit`, design: `Docs/Squad_Fit_Gap_Design.md`, added 2026-07-15): per (coach, team), which of the squad's value the coach's usual shapes leave idle (bench players worth more than the cheapest starter they field, rolled up by archetype) and which positions can only be filled by a stretch player — explains the deployment layer in € and slots, **never in points** (inherits its exploratory label). `cr_best_xi_value` was refactored to wrap `cr_best_xi_assign` (returns the XI + bench, not just the total). Ships in `recommender.rds` per team keyed by coach, rendered in a **right-side pop-up drawer** opened by clicking a team-page similarity card (`se_squad_fit` in `site_export.R`, `team.js`; drawer is a full-height overlay above the sticky header, closes on Escape/backdrop/×, and normal click opens it while ctrl/⌘/middle-click still follows the card link to the coach profile). The computed `gap_pct`/`gap_eur` scalar is deliberately **not displayed** (QA showed it mis-orders the value-max anchor and doesn't reconcile with the strand list — see design §3.5); the panel leads with the coherent strand/gap lists. The drawer also carries a **descriptive coach dossier** (added 2026-07-16): `cr_coach_dossier(scorer, coach_ids)` ships per-coach preferred formations (top recency-weighted shapes from `scorer$profiles`), rigidity, career span (first/last season, total games, stints), and clubs coached (14-league history, most recent first) in `recommender.rds$dossier` — restricted to the 81-coach similarity pool to stay lean; `se_coach_dossier()` formats it onto each similar-coach entry as `career`, rendered above the squad-fit section (stat tiles, formation meter bars, club chips).
+**Squad-fit gap diagnostic** (`cr_squad_fit`, design: `Docs/Squad_Fit_Gap_Design.md`, added 2026-07-15): per (coach, team), which of the squad's value the coach's usual shapes leave idle (bench players worth more than the cheapest starter they field **and startable by at least one of the 22 shapes** — `cr_startable_players()`, see below — rolled up by archetype) and which positions can only be filled by a stretch player — explains the deployment layer in € and slots, **never in points** (inherits its exploratory label). `cr_best_xi_value` was refactored to wrap `cr_best_xi_assign` (returns the XI + bench, not just the total). Ships in `recommender.rds` per team keyed by coach, rendered in a **right-side pop-up drawer** opened by clicking a team-page similarity card (`se_squad_fit` in `site_export.R`, `team.js`; drawer is a full-height overlay above the sticky header, closes on Escape/backdrop/×, and normal click opens it while ctrl/⌘/middle-click still follows the card link to the coach profile). The computed `gap_pct`/`gap_eur` scalar is deliberately **not displayed** (QA showed it mis-orders the value-max anchor and doesn't reconcile with the strand list — see design §3.5); the panel leads with the coherent strand/gap lists.
+
+**The strand's `startable` filter is load-bearing (design §3.3a, added 2026-07-16).** The max-value XI is near formation-invariant (any two of the 22 shapes share 8–10 of 10 outfield starters; on Man City 24 of 36 players start in *no* shape), and `rep_w` sums to 1 — so a player benched in every shape contributes his **full value identically to every coach**. That put a flat "destroyer €40m" on all 81 Man City coaches and made 88.9% of a team's coaches share the same top strand label. `cr_startable_players(squad)` (players making the best XI in **≥1 of the 22 shapes**, computed once per team in `cr_save_results` and passed in) restricts the strand to players some shape would field; top-label agreement fell to 77.8%. **Never narrow that quantifier to the coach's own repertoire** — a player Guardiola benches but Allegri starts *is* stranded by Guardiola, and that contrast is the whole coach-specific signal. Residual ~78% sameness is real (the same expensive attackers genuinely sit outside most shapes) — it is a partial fix, not a solved problem. On squads near the €5m `strand_floor` the strand can now empty entirely (Venezia: 70 of 81 drawers), which is correct — the old numbers there were all depth players — and `team.js` already degrades to a "Natural fits across the pitch…" line. The drawer also carries a **descriptive coach dossier** (added 2026-07-16): `cr_coach_dossier(scorer, coach_ids)` ships per-coach preferred formations (top recency-weighted shapes from `scorer$profiles`), rigidity, career span (first/last season, total games, stints), and clubs coached (14-league history, most recent first) in `recommender.rds$dossier` — restricted to the 81-coach similarity pool to stay lean; `se_coach_dossier()` formats it onto each similar-coach entry as `career`, rendered above the squad-fit section (stat tiles, formation meter bars, club chips). The **coach page** also shows a "Preferred formations" card (`se_coach_formations()` → `coach.js renderFormations`, added 2026-07-16) reading the same dossier — top-5 recency-weighted shapes as meter bars + a rigidity descriptor; only the ~81 pool coaches have it, others omit the card. `cr_coach_dossier` stores 5 formations (the drawer slices to 3).
 
 **Payoff verdict (2026-07-13, binding on what the site presents):** only the quality BLUP is validated out-of-sample on new coach-club pairings (p = 0.016 realized framing); fit + deployment are exploratory and must always be labeled as such. `cr_save_results(scorer, payoff_folds)` writes `data/results/recommender.rds` (per-team suggestions for latest-season big-5 squads + career facts + meta + the `builder` component: the 81-coach similarity-profile pool and the model constants the team-builder page needs — formation slots, eligibility matrices, archetype labels) for the site exporter. Career facts feed the plausibility filter chips; coach nationality comes from `xx_data_populate_coach_nationalities()` in `source_data.r` (resumable TM profile scrape, priority-ordered to ranked coaches; TM intermittently 502s this page type — the populate backs off and can be re-run).
 
@@ -106,7 +237,11 @@ Answers "who is the best coach for this team?" (design: `Docs/Coach_Recommender_
 A static presentation site lives in `site/` at the repo root — the one place the R code writes outside `src/data/` (it is a publishing target, not analysis data). Design: `Docs/Website_Design.md`; build plan: `Docs/Website_Implementation_Plan.md`.
 
 - `export_site_data()` (`se_` prefix, working dir `src/`) regenerates everything under `site/data/` (per-coach/team/league JSON keyed by TM numeric ids, leaderboard, search index, meta), `site/assets/` (coach images + club crests copied from `data/images/`), and `site/writeup.html` (converted from `Docs/Summary_of_Findings.md` via `{commonmark}`). It wipes and rebuilds those paths; never edit them by hand. Hand-written files (`*.html` except writeup, `css/`, `js/`) are never touched.
-- Export inputs: `data/results/*.rds` — including `coach_grades_*.rds` (written by `save_coach_grades()` in `coach_attribution.R`), `archetype_fit.rds` (written by `cf_save_results()` in `coach_fit.R`), and `recommender.rds` (written by `cr_save_results()` in `coach_recommender.R` — feeds the team-page "Suggested coaches" section; teams without an entry get a note card). Re-run those savers after re-running M5/M6/recommender before exporting.
+- Export inputs: `data/results/*.rds` — including `coach_grades_*.rds` (written by `save_coach_grades()` in `coach_attribution.R`), `archetype_fit.rds` (written by `cf_save_results()` in `coach_fit.R`), `coach_strengths_{top5,14league}.rds` + `coach_style.rds` (the descriptive profile, below), and `recommender.rds` (written by `cr_save_results()` in `coach_recommender.R` — feeds the team-page "Suggested coaches" section; teams without an entry get a note card). Re-run those savers after re-running M5/M6/recommender before exporting.
+- **Descriptive profile on coach pages** (phase 6, shipped 2026-07-16, design `Docs/Coach_Descriptive_Profile_Design.md` §6): two cards, both **gated by the honesty label of their layer, not by what the data allows**:
+  - "Where his edge comes from" (`se_coach_strengths()` → `coach.js renderStrengths` → `charts.js strengthBars`) — the Layer A goals cut. Read from the **same cut as the headline grade** and shown **only for graded coaches** (545): it re-slices the BLUP, so it inherits the grade's display certification bar rather than inventing its own. `STRENGTH_DOMAIN` (±0.26 goals/game) is a **fixed** x domain shared by both rows and every coach — defence bars are visibly shorter than attack for nearly everyone because the coach effect really is stronger on goals scored (LRT χ² = 160 vs 60); do not give the rows separate axes to "fix" it. `edgeNote()` fires when the goal edge and the BLUP disagree in sign (Simeone: B grade, −0.03 goal edge) — without it the lede flatly contradicts the grade card above it.
+  - "Style of the teams he coached" (`se_coach_style()` → `renderStyle` → `styleBars`) — Layer B, for the 256 coaches with ≥ `se_style_min_games` (38) of big-5 style data. Carries a separate inset **pressing-height block** (`renderPressingHeight` → `charts.js spectrumBar`, a named-pole percentile scale "Deep block ↔ High press"): it is inset because it is measured per *season*, not per match, so unlike the nine axes it cannot always be pinned to the coach rather than his club (`blended` flag, 56 of 256). **Do not draw it on a pitch** — the stat is the share of possession won in the attacking third *ranked against other coaches*, so a marker at a pitch position would claim a physical location the data does not contain. **Percentile, never raw SD** (design §3.3: coach means compress toward 0, so raw SD renders every fingerprint flat); percentiles are ranked *within* the same ≥38-game set that is displayed, so they differ slightly from the ≥100-game percentiles quoted in the design doc/session logs. **One hue, not the site's pos/neg pair** — these axes have no good/bad polarity and the diverging ramp would invent a verdict. The title, the `coach_owned` dots (lineup stability + pressing intensity only) and the footnote are all load-bearing per design §5: club identity beats coach on 7 of 9 axes, so the card may never say "his style".
+  - **The xG cut and Layer C are deliberately absent.** xG is 3 big-5 seasons with zero FDR-significant coaches — a recent-form lens a coach page would flatten into a career verdict. Layer C is a null; its raw correlations must never render as findings. Both live in the writeup (Part 8) instead.
 - **jsonlite gotcha:** the export uses `auto_unbox = TRUE`, so any vector that can be length 1 but must stay a JSON array needs `I()` (see `leagues`, `seasons` in the exporters) or the frontend crashes on `.join`/iteration.
 - Club crests: `xx_raw_team_crest()` / `xx_data_populate_team_crests()` in `source_data.r` download from the TM image CDN (`wappen/head/<id>.png` — no page scrape). 404 on both URL variants is recorded as permanently missing in `data/cache/team_crests.rds`; transient failures (including empty 200s) retry on the next run. All 496 active-league clubs are downloaded.
 - The frontend is dependency-free vanilla JS (ES modules, hand-rolled SVG charts, light/dark via CSS custom properties). Pages fetch JSON, so serve the folder (`python -m http.server` in `site/`) rather than opening `file://`. Grades never render without their cut label ("Top-5 leagues" / "All leagues") — the two cuts use separate grading curves.

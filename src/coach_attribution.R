@@ -119,7 +119,10 @@ validate_coach_coverage <- function(coach_residuals_tbl, residuals_tbl) {
 # games-weighted SD of stint residuals (display only).
 # n_clubs counts distinct clubs (Transfermarkt club URL, season stripped).
 # sd_residual and se_residual are NA for coaches with only one stint.
-compute_coach_stats <- function(coach_residuals_tbl, min_games = 10, min_stints = 1) {
+# label names the residual's units in the histogram only — coach_strengths.R
+# reuses this function for goals-per-game heads, which are not PPG.
+compute_coach_stats <- function(coach_residuals_tbl, min_games = 10, min_stints = 1,
+                                label = "PPG") {
   stats <- coach_residuals_tbl |>
     filter(!is.na(partial_residual_ppg)) |>
     group_by(coach_id, coach_name) |>
@@ -151,8 +154,8 @@ compute_coach_stats <- function(coach_residuals_tbl, min_games = 10, min_stints 
   op <- par(mar = c(4, 4, 3, 1))
   on.exit(par(op))
   hist(stats$mean_residual, breaks = 30, col = "steelblue",
-       main = "Distribution of coach mean residuals (PPG)",
-       xlab = "Mean partial residual (PPG)")
+       main = paste0("Distribution of coach mean residuals (", label, ")"),
+       xlab = paste0("Mean partial residual (", label, ")"))
   abline(v = 0, col = "red", lwd = 2, lty = 2)
 
   cols <- c("coach_name", "n_stints", "total_games", "n_clubs", "mean_residual", "sd_residual")
@@ -398,10 +401,11 @@ test_tenure_effect <- function(coach_residuals_tbl,
                  coef = coef_val, se = se_val, p = p_val))
 }
 
-build_coach_residuals <- function(residuals_tbl, min_coverage = 80) {
-  coaches <- xx_data_cache$coaches
-  matches <- xx_data_cache$matches
-
+# Drops team-seasons where less than min_coverage% of minutes were played by
+# players carrying a market value — the residual is unreliable when the squad
+# is largely unvalued. Extracted from build_coach_residuals() (2026-07-16) so
+# the Layer A goal models in coach_strengths.R filter on identical rows.
+xx_filter_value_coverage <- function(team_season_tbl, min_coverage = 80) {
   coverage <- xx_data_cache$players |>
     group_by(team_season_id) |>
     summarize(
@@ -411,15 +415,24 @@ build_coach_residuals <- function(residuals_tbl, min_coverage = 80) {
       .groups        = "drop"
     )
 
-  residuals_filtered <- residuals_tbl |>
+  filtered <- team_season_tbl |>
     left_join(coverage, by = "team_season_id") |>
     filter(is.na(pct_covered) | pct_covered >= min_coverage)
 
-  n_dropped <- nrow(residuals_tbl) - nrow(residuals_filtered)
+  n_dropped <- nrow(team_season_tbl) - nrow(filtered)
   cat(sprintf(
     "Coverage filter (>= %d%%): %d team-season(s) dropped, %d retained.\n",
-    min_coverage, n_dropped, nrow(residuals_filtered)
+    min_coverage, n_dropped, nrow(filtered)
   ))
+
+  filtered
+}
+
+build_coach_residuals <- function(residuals_tbl, min_coverage = 80) {
+  coaches <- xx_data_cache$coaches
+  matches <- xx_data_cache$matches
+
+  residuals_filtered <- xx_filter_value_coverage(residuals_tbl, min_coverage = min_coverage)
 
   purrr::map_df(residuals_filtered$team_season_id, function(team_sid) {
     meta <- residuals_tbl |> filter(team_season_id == team_sid)
