@@ -8,8 +8,14 @@ and adds a second outcome axis alongside the points BLUP: not *did the team win 
 than its value predicted*, but *did the players become more valuable than their
 trajectory predicted*.
 
-Status: **design only — not built.** All core data is already in the cache (no new
-scrape). Feasibility verified 2026-07-21 (see §2).
+Status: **BUILT and validated — verdict is a NULL (2026-07-21).** Phases 1–4 and
+the pre-registered validation shipped in `src/coach_value_growth.R`. The metric
+passes the reflection test (93–96% orthogonal to points) but **fails
+repeatability out-of-sample (split-half r ≈ 0 in both cuts)**, so the coach-level
+CDE is not a stable trait — on-brand null #4. Nothing ships to the site; the
+writeup carries it (Part 9). See §9 for the full as-built and verdict. All core
+data was already in the cache (no new scrape). Feasibility verified 2026-07-21
+(see §2).
 
 **Working name for the metric:** the **Coach Development Effect (CDE)** — a coach-level
 value-growth-over-expectation BLUP, built on the exact M3→M4→M5 skeleton (baseline
@@ -339,3 +345,145 @@ No open questions remain; ready to build Phase 1 on the top-5 cut.
 
 ## 9. As-built notes
 *(filled in as phases land — validation results, the honesty verdict, what shipped.)*
+
+### Phase 1 — player-season base + development residual (shipped 2026-07-21)
+
+`src/coach_value_growth.R` (`cvg_` prefix, pure cache-reader, sources
+`coach_attribution.R` for `build_model_dataset()` + the M5 spine Phase 2 will
+reuse). `cvg_run_phase1("top5")` builds the base, fits both baselines, runs the
+confound + face checks, and writes the deliverable
+`data/results/player_dev_residuals_top5.rds` (34,653 player-seasons).
+
+- **Sample (top-5).** 34,653 same-club consecutive-season valued pairs, 10,515
+  players, 182 clubs, seasons 2005–2023 (t+1 needs 2024). 56.5% carry a
+  same-club prior-growth momentum term (missing-indicatored, not dropped); 97.6%
+  carry minutes. Population is defined via `build_model_dataset(leagues=cut)`, not
+  the `league_name` strings (Brazil's "Série A" collides with Italy's) — so
+  league/season factors line up with M3/M4/M5 exactly. The value trajectory is
+  built on the **full** players cache so `value_{t+1}` survives a relegation out
+  of the cut; only the fit rows are restricted to the cut's season-t team-seasons.
+- **Value floor.** `value_t`/`value_{t+1}` ≥ €25k drops TM's noisy valuation
+  floor (a tiny denominator inflates `g` without signal).
+- **Baseline (the M3 analog).** `g ~ ns(age,5)*position_group + ns(log_value_t,4)
+  + prior_growth + has_prior + factor(league) + factor(season)`; the development
+  fork adds `ns(pct_minutes,3) + has_minutes`. Position groups GK/DEF/MID/FWD
+  (keepers split out — they peak late). **`log(value_t)` is splined, not linear**
+  (design §3.2a said linear): with a linear term the residual kept a mild U-shape
+  across starting-value deciles (deciles 1 and 10 ≈ +0.08, middle ≈ −0.06) — the
+  exact §5.2 "coaches of cheap squads" confound. `ns(log_value_t,4)` flattened it
+  to ±0.016 with no loss elsewhere (it is still a confounder-only control, so the
+  fix is legitimate). CDE-total R² = 0.273, CDE-development R² = 0.293 (the ~2pp
+  gap is the opportunity channel — minutes predict growth). Residual SD 0.543.
+- **Confound checks pass.** cor(dev_resid, age/log_value_t/prior_growth) ≈ 0;
+  residual flat across all age bins (±0.014) and (post-spline) all value deciles
+  (±0.016). cor(dev_resid, pct_minutes) = +0.11 in CDE-total, which is *expected*
+  and correct — minutes is a mediator deliberately left in the total residual.
+- **Face validity strong.** Top over-expectation seasons are the canonical
+  academy breakouts (Chiesa €0.1m→€10m at 17, Mainoo €0.8m→€50m at 17, Aouar,
+  Archie Gray, Ekitiké, Phil Jones, Henderson); bottom are aging/declining
+  collapses (Raúl Tamudo 33, Costinha 31, Duda 35, Deulofeu). No coach is
+  attributed anything at this phase — this is a smell test on the raw residual.
+- **Snapshot-timing question (§2) — pinned.** Of 20,507 mid-season multi-club
+  player-seasons, **89.0% carry an identical value on both clubs' season-t squad
+  pages** → the per-season value is a single season-level point-in-time snapshot,
+  not a tenure-specific stamp. Consequence for Phase 2: `g` is a clean
+  season-to-season delta, and because the stamp cannot resolve *within-season*
+  which coach drove a mark, the design's minutes-split-across-a-season's-coaches
+  rule (§3.4) is the honest allocation. Design is robust to the timing answer as
+  §2 predicted.
+### Phases 2–4 + validation — the CDE BLUP and the verdict (shipped 2026-07-21)
+
+`cvg_run_all("top5" | "14league")` runs Phase 1 then Phases 2–4. Writes
+`coach_value_growth_<cut>.rds` (per-coach CDE-total, CDE-development, opportunity
+gap, stint-mean + FDR significance) and `cde_coach_stints_<cut>.rds`. **These are
+exploratory-null artifacts — not exported to the site.**
+
+- **Attribution (§3.4).** `cvg_attribute()` explodes each player-season into one
+  row per coach who ran the club that season, weight = `pct_minutes × game_share`
+  (`pct_minutes` is league-normalised share of team minutes, 0–0.091; raw
+  `minutes_played` mixes competitions and was rejected). `game_share` comes from
+  the M5 spine (`xx_assign_matches_to_coaches`). 30–35% of player-seasons split
+  across >1 coach. The single season-level value snapshot (Phase 1 finding) is
+  why a games-split, not a within-season stamp, is the honest allocation.
+- **Mixed model (§3.5).** `cvg_fit_cde()`: `resp ~ (1|player_id) + (1|club_id) +
+  (1|coach_id)`, exposure-weighted, ML, bobyqa. **The player RE is dominant —
+  44% (top5) to 62% (14-league, with movers) of variance** — and that is the
+  whole story: persistent per-player appreciation, not a coach trait. Coach
+  component 18–22% in-sample, LRT p < 1e-60 — which is exactly the overfit trap
+  the repeatability test exists to catch.
+- **VERDICT — the three pre-registered gates (§6):**
+  - **Reflection / orthogonal-to-points (§5.4): PASSES.** cor(CDE, points BLUP) =
+    0.27 (top5) / 0.20 (14-league); 93–96% of CDE variance is orthogonal. So CDE
+    is *not* points re-expressed in euros — it is a genuinely different axis.
+  - **Repeatability OOS (§6): FAILS.** Even/odd-season split-half r = **−0.07**
+    (top5) / **+0.05** (14-league), 95% CI [−0.01, 0.11] on n = 792 coaches.
+    Indistinguishable from zero in both cuts — a coach's value-growth effect in
+    one half of his career does not predict the other half. **This is decisive:
+    the coach-level CDE is noise, not a stable trait.**
+  - **Face validity: WEAK.** Top of the CDE ranking is journeyman coaches
+    (Fernando Vázquez, Víctor Muñoz, Manzano), not the academy-pipeline tenures
+    the design predicted (Klopp/Ten Hag/Salzburg-type). A few plausible names
+    (Pochettino, Luis Enrique, Gasperini) appear mid-list but do not anchor it.
+  - **Mover robustness (Phase 4, §5.5): stable.** Adding transfer movers leaves
+    the ranking essentially unchanged (Spearman 0.89–0.94) — the null is not a
+    same-club-selection artefact; it is stable.
+- **Honesty verdict: exploratory NULL, on-brand #4** (after M6 fit, recommender
+  fit/deployment, Layer C). Per §0/§5 a failed validation is writeup-only: no
+  site descriptor, no "develops value" tag, no coach-page number. The clean
+  by-product worth keeping is `player_dev_residuals_*.rds` — a validated
+  *player*-development residual (characterises players, not coaches).
+- **One design change from §3.2a:** `log(value_t)` is **splined** (`ns(·,4)`),
+  not linear — the linear term left the §5.2 "coaches of cheap squads" U-shape in
+  the residual. Still a confounder-only control, so legitimate.
+- **Deliberately not done:** the parallel transfer-fee scrape track (§7) — a
+  genuine new Transfermarkt scrape with IP-block risk, and pointless to run for a
+  metric that already fails repeatability. It (and the contract-length confound,
+  §5.8) stay open gaps, documented, not closed. Do not re-open CDE as a coach
+  ranking without a new outcome or a repeatability pass; the null is binding.
+
+### Follow-up exploration (2026-07-21) — subgroups + the club question
+
+Added to `coach_value_growth.R` (all `cvg_`, exploratory, no site output):
+`cvg_split_half()` (repeatability at any level/subset), `cvg_club_cross_coach()`
++ `cvg_club_regime_persistence()` (club consistency across coaching changes),
+`cvg_subgroup_repeat()` (coach repeatability by age band / position),
+`cvg_archetype_map()` + `cvg_archetype_analysis()` (SofaScore archetype join),
+`cvg_explore(phase1, attr_tbl, cut)` runs all of it.
+
+- **Player type does not rescue the coach signal.** Coach split-half stays null
+  within every age band, position group, and archetype; young players (≤21) run
+  slightly **negative** (−0.09 to −0.16). The coach null is robust to slicing.
+- **Descriptive archetype by-product (clean):** because the residual is already
+  de-confounded for age/price/position, its mean by archetype shows which player
+  *types* over-appreciate — wide creator +0.07–0.08, deep playmaker/box striker/
+  attacking fullback ≈ +0.04, defensive fullback −0.02 (both cuts). Corroborates
+  M6 (wide creators most valuable) from the value-growth direction. About player
+  types, not coaches.
+- **The one real coach-independent signal — clubs, selling leagues only.** Club
+  consistency across managers: consecutive-regime (k vs k+1) r ≈ **+0.10**
+  (p = 2e-4) on the 14-league cut, r ≈ +0.31 on a disjoint alternating split —
+  **entirely outside the big five.** Big-5 clubs: regime r = +0.005 (flat);
+  non-big-5 (Eredivisie/Portugal/Championship-type pipelines): regime r = +0.104
+  (p = 2e-4), cross-coach r = +0.306 (p = 2e-6). **METHOD TRAP that will recur:**
+  the naive cross-coach split gave a spurious **+0.40** because a mid-season-change
+  player-season is shared between two managers with the *same* dev_resid; 30% of
+  player-seasons split, so this is large. `cvg_primary_coach()` (collapse each
+  player-season to its max-exposure coach) removes it and leaves the real,
+  smaller, selling-league-only effect. **Never run the club cross-coach test on
+  the exploded attribution without the primary-coach collapse.** top5-only was
+  underpowered (151 clubs) and looked null — the club signal needs the 14-league
+  sample and lives in the smaller leagues. This is a club/market property, modest,
+  and does not revive the coach metric — the part of value growth that repeats
+  belongs to the club, not the manager.
+- **Does the points grade miss these developmental-club coaches?** Checked (435
+  coaches, ≥100 games): no. points BLUP vs selling-league share r = −0.03 (no
+  penalty; mean grade 75.7 both tiers), vs coach value-growth r = **+0.20**
+  (positive — a miss would be negative). Top developmental environments are run by
+  already-well-graded coaches (Fischer A+, Warnock A+, Gasperini A-, Solbakken,
+  Kek, Papszun). The tell: a coach's own value-growth correlates **0.59** with the
+  dev level of his *clubs* — "he develops players" is mostly "his clubs do." The
+  high-dev/low-grade residual (Kompany's relegated Burnley, Burley F, Jokanović)
+  are real points under-performers with noisy non-repeatable personal value-growth.
+  The only gap is attributability, not grade bias: a points-only grade carries no
+  development signal for a selling-club hire because development is not a
+  coach-attributable skill in this data.

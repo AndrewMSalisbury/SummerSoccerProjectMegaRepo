@@ -226,6 +226,56 @@ are easy to misread:
 - Shot coordinates: attacked goal at (0, 50), and x/y are both 0–100 but span different
   physical distances — scale to metres (×1.05, ×0.68) before computing shot distance.
 
+### Coach Value Growth Layer (`src/coach_value_growth.R`)
+
+The Coach Development Effect (CDE): a second, euro-denominated outcome axis —
+*do players appreciate in market value faster than their own trajectory predicts
+under a coach?* (design: `Docs/Coach_Value_Growth_Design.md`; built 2026-07-21).
+`cvg_` prefix, pure cache-reader, sources `coach_attribution.R` (for
+`build_model_dataset()` + the M5 spine). Mirrors M3→M4→M5: a baseline
+expectation model on log value growth `g = log(value_{t+1}/value_t)` for same-club
+consecutive-season valued pairs (confounders only — splined age×position, splined
+starting value, prior momentum, league/season FE; every mediator left in the
+residual), attributed to coaches through the M5 games-split spine, then a mixed
+model with **player + club + coach** random effects. `cvg_run_all("top5" |
+"14league")` runs Phases 1–4 + validation; writes `player_dev_residuals_<cut>.rds`
+(the clean *player*-development residual — the one keepable by-product),
+`coach_value_growth_<cut>.rds`, `cde_coach_stints_<cut>.rds`.
+
+**Binding verdict: this is an exploratory NULL (#4, after M6 fit, recommender
+fit/deployment, Layer C) and appears NOWHERE on the site.** It *passes* the
+reflection test (93–96% of CDE variance orthogonal to the points BLUP, so it is
+not points re-expressed) but **fails repeatability out-of-sample** — even/odd
+season split-half r = −0.07 (top5) / +0.05 (14-league), indistinguishable from
+zero — so the coach-level effect is not a stable trait. The player RE dominates
+the variance (44–62%): the metric measures *which players happened to blow up on
+a coach's watch*, which is luck. Stable to adding movers (Spearman 0.89–0.94), so
+the null itself is robust. Facts that will bite if forgotten: the value snapshot
+is a single **season-level** number (89% of mid-season movers carry an identical
+value on both clubs' pages — verified), which is why a games-split attribution,
+not a within-season stamp, is correct; `log(value_t)` is **splined** (a change
+from design §3.2a — the linear term left a "coaches of cheap squads" U-shape);
+minutes weighting uses `pct_minutes` (league-normalised), never raw
+`minutes_played` (mixes competitions). The transfer-fee external tie-back (§7) and
+the contract-length confound (§5.8) are documented open gaps, deliberately not
+closed — pointless for a metric that fails repeatability. **Do not re-open CDE as
+a coach ranking without a new outcome or a repeatability pass; the writeup Part 9
+carries it as a null.**
+
+Follow-up exploration (2026-07-21, `cvg_explore()`; exploratory, no site output):
+slicing does not rescue the coach signal — it stays null in every age band,
+position, and SofaScore archetype (young ≤21 slightly negative). A clean
+descriptive by-product: attacking/creative archetypes over-appreciate beyond the
+age/price/position baseline (wide creator +0.07, deep playmaker/box striker ≈
++0.04, defensive fullback −0.02), corroborating M6 from the value-growth side. The
+one real coach-independent signal is **club consistency across managers, and only
+in selling leagues** — consecutive-regime r ≈ +0.10 (p = 2e-4) driven entirely by
+non-big-5 clubs (Eredivisie/Portugal/Championship pipelines; big-5 regime r =
++0.005). **METHOD TRAP:** the naive club cross-coach test gives a spurious +0.40
+because a mid-season-change player-season is shared between two managers (30% of
+seasons split) — always collapse to the primary coach (`cvg_primary_coach()`)
+first. The club signal needs the 14-league sample; top5-only is underpowered.
+
 ### M6 Archetype Layer (`src/player_archetypes.R`, `src/coach_fit.R`)
 
 The Milestone 6 coach/player-type fit analysis. Pure cache-readers (no scraping, no chromote):
