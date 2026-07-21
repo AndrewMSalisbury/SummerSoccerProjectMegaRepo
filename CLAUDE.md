@@ -188,11 +188,24 @@ variation to test — recorded as "between-coach only; untestable", not as a pas
 not re-walk: the all-axes multivariable is a **suppression trap** (`club_pct` flips from
 r = +0.39 bivariate to β = −0.60 partial, reading as "big clubs underperform"; the tell is
 possession's β *rising* under a club control, 0.517 → 0.568), so one axis + one control is
-the only interpretable spec; and `r(club_pct, blup) = +0.39` means the BLUP cannot
-distinguish "better coaches are hired by bigger clubs" from "the value model under-predicts
-big clubs". **Do not ship a style→quality story or "re-examine" these correlations without
-redoing all four checks.** glmnet is not installed; `sy_ridge_cv()` is a dependency-free
-weighted ridge used as a stability check only.
+the only interpretable spec; and `r(club_pct, blup) = +0.39` means Layer C's style axes
+cannot be told apart from club size. **Do not ship a style→quality story or "re-examine"
+these correlations without redoing all four checks.** glmnet is not installed;
+`sy_ridge_cv()` is a dependency-free weighted ridge used as a stability check only.
+
+For the **ranking** (as opposed to Layer C), the `club_pct ↔ BLUP` correlation was tested
+directly and resolved (2026-07-21, `Docs/Session_Log_2026-07-21.md`; writeup Part 8): it is
+**benign selection, not value-model mis-specification.** The within-coach club-size slope is
+**negative** (−0.00085, t = −5.0; coach-FE cross-check p = 1e-7) — the wrong sign for
+mis-specification (which needs the *same* coach to overperform more at a bigger club), so the
+grades are a valid coach effect. The BLUPs are robust to a curvature-corrected (spline) value
+term (rank r = 0.98, Guardiola still #1); the confound shrinks only 0.21 → 0.16. The one real
+residual is a small, OOS-validated (LOSO 2.55%, p = 0.0017) linear-in-log under-prediction of
+the single biggest club per league, inflating permanent-elite coaches' grades ~0.02–0.04 PPG
+without reordering. Adopting the spline was declined (document-only) — it re-plumbs M4→M5→
+strengths→style→recommender→grades→site for a ~0.005 PPG average BLUP move. This resolves
+the "most load-bearing untested claim" flagged in the 2026-07-16b log; do not re-open it as
+untested.
 
 Field-availability facts, verified 2026-07-16 — the two caches disagree and the docs
 are easy to misread:
