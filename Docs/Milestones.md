@@ -86,6 +86,30 @@ Shipped to coach pages: the goals cut and the style fingerprint, each carrying i
 
 ---
 
+## Market Benchmark ✓
+**Completed: July 22, 2026**
+
+The project's first **external** validation: a leakage-free, walk-forward match forecaster
+(pre-season squad value + home + as-of coach quality BLUP, in a Dixon–Coles goal model)
+tested against bookmakers' **closing odds** — the sharpest baseline that exists, already
+pricing both squad and manager. New data + analysis layers (`src/source_odds.R`,
+`src/market_benchmark.R`): football-data.co.uk ingest for 13 of 14 leagues (51,807 matches
+2012–2024, 99.9% Pinnacle-closing), a team crosswalk verified by points reconciliation
+against TM's own records (99.7% exact outside Belgium), and the M5 mixed model refit
+as-of each season for leakage-free coach ratings. **Verdict: a clean, pre-registered null.**
+The leakage-free forecaster is strictly worse than the closing line (log-loss 1.014 vs
+0.978) and adds nothing beyond it — value p = 0.31, coach BLUP p = 0.51, and p = 0.32 even
+for the low-profile managers most likely to be mispriced; a P&L backtest loses 6–10%. The
+one apparent win (+0.224, p = 10⁻²¹) was within-season valuation leakage the pre-registered
+prior-season check dissolved — a live demonstration of the design's dominant risk. The
+market has already discovered and priced the coaching signal: external corroboration that
+it is real, and the ceiling on exploiting it. The fourth on-brand "real but not
+incrementally exploitable" result. Design: `Docs/Market_Benchmark_Design.md`; findings:
+`Summary_of_Findings.md` Part 10; session log: `Docs/Session_Log_2026-07-22.md`. Nulls
+follow project convention — writeup only, no site surface.
+
+---
+
 ## Website ✓
 **Completed: July 10, 2026**
 

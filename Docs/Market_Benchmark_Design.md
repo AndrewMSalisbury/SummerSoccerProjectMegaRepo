@@ -225,4 +225,59 @@ No open questions remain; ready to build Phase 1 (ingest + crosswalk) once the
 value-growth metric is under way.
 
 ## 8. As-built notes
-*(filled in as phases land — crosswalk coverage, leakage audit, the market verdict.)*
+*(Built 2026-07-22 in one session — `src/source_odds.R` + `src/market_benchmark.R`.
+Session log: `Docs/Session_Log_2026-07-22.md`. Writeup: `Summary_of_Findings.md` Part 10.)*
+
+**Phase 1 — ingest + crosswalk (done).** `source_odds.R` (`od_` prefix) downloads
+football-data CSVs to `data/cache/odds/`, parses results + closing odds, and joins to
+TM `team_season_id`s. 11 of the 13 leagues are in the main `mmz4281/<SSSS>/<div>.csv`
+files (E0→GB1, E1→GB2, SP1→ES1, SP2→ES2, I1→IT1, D1→L1, F1→FR1, P1→PO1, N1→NL1, B1→BE1,
+T1→TR1); Denmark/Poland are in the `new/` combined-file format and were **not wired**
+(secondary per §2; the strong core is the 11 main-file leagues, exactly as §2 predicted).
+**51,807 matches 2012–2024, 99.9% with usable odds, overwhelmingly Pinnacle closing
+(PSCH/D/A), present in every season file** — confirming §2's "Pinnacle closing 2012/13+".
+Odds coalesce PSC → PS → B365C → B365 per match.
+
+**Crosswalk method that worked (§5.4).** Name similarity alone is too weak for
+football-data's abbreviations ("Ath Madrid", "Sp Lisbon", "M'gladbach"). The solution is a
+**within-season greedy one-to-one assignment** (the ~20 clubs are a bijection, so even a
+mediocre scorer resolves correctly under the constraint) with a prefix-aware token scorer,
+built **per season** — NOT via the cross-season stable map, which can collide two fd names
+onto one verein (it put RAEC Mons 2012 at 60 games). **Verification is by points
+reconciliation against TM's own match records, not by name score: 99.7% exact outside
+Belgium (100% for D1/E0/E1/N1/P1/SP1/T1), every miss a fixture-count difference (Belgium's
+Jupiler playoffs, or fd missing ~2 Portugal fixtures in some seasons), never a
+misidentification.** `od_name_overrides` stayed empty — the bijection needed no manual fixes.
+
+**Phases 2–4 — forecaster + evaluation (done).** `market_benchmark.R` (`mb_` prefix).
+Leakage-free features: pre-season squad value (`value_mode="prior"` = the club's
+prior-season `total_team_value`, current-season fallback for promoted/first-seen) and the
+**as-of coach BLUP** (`mb_asof_blups`: the full M5 mixed model refit on completed seasons
+< cutoff, one table per cutoff 2012–2024, cached `mb_asof_blups.rds`). Dixon–Coles goal
+model fit expanding-window per test season; `mb_fit_dc_glm` (stacked Poisson GLM + 1-D rho)
+reproduces the slow joint MLE exactly and is ~50× faster. Evaluation = McFadden conditional
+logit (`mb_condlogit`) of the result on market prob + model signal, plus log-loss/Brier and
+the §4.4 P&L (`mb_pnl`, bootstrap CI + favourite/longshot buckets + achievable-price haircut).
+
+**The verdict — a clean null (the honest §0 outcome #2).** On the leakage-free forecaster:
+- **Skill:** market log-loss 0.978 vs model 1.014; market sharper in all 11 leagues.
+- **§4.2 incremental:** value model beyond market **+0.023, p = 0.31 — null.**
+- **§4.3 coach:** BLUP beyond market **−0.17, p = 0.51**; beyond market+value p = 0.51;
+  low-profile-manager subgroup **−0.41, p = 0.32 (n = 36,425)** — null on every framing.
+- **§4.4 P&L:** −6.4% ROI at Pinnacle closing (CI [−8.1, −4.8], significantly losing),
+  −9.9% at a 5% haircut; every odds bucket negative.
+
+**The leakage audit is the headline lesson (§5.1).** The *current-season*-value variant
+showed a spurious incremental **+0.224, p = 1×10⁻²¹** — it would have been the project's
+headline. Switching the single input to prior-season value collapsed it to +0.023 / p =
+0.31. The apparent edge was entirely within-season valuation hindsight. Kept in the writeup
+as a live demonstration that against a near-efficient benchmark a few percent of leaked
+variance is the gap between 10⁻²¹ and the truth.
+
+**Deviations from the design, all recorded:** (1) the coach BLUP could not be stably fit
+*inside* the DC goal model (collinear with value, sign-flipping across folds, b ∈ ~[0, 1.2]),
+so the forecaster is value+home and the coach is tested as a separate incremental signal
+(§4.3) rather than as forecast skill; (2) Denmark/Poland deferred (new-file format,
+secondary); (3) 2012/13+ only in this pass (the pre-registered Pinnacle-clean primary
+window; pre-2012 secondary span not yet ingested); (4) **no site surface** — a null follows
+the project convention (CDE, Layer C) of living in the writeup, not an interactive page.

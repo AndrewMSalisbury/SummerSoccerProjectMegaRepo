@@ -295,6 +295,60 @@ Answers "who is the best coach for this team?" (design: `Docs/Coach_Recommender_
 
 **Payoff verdict (2026-07-13, binding on what the site presents):** only the quality BLUP is validated out-of-sample on new coach-club pairings (p = 0.016 realized framing); fit + deployment are exploratory and must always be labeled as such. `cr_save_results(scorer, payoff_folds)` writes `data/results/recommender.rds` (per-team suggestions for latest-season big-5 squads + career facts + meta + the `builder` component: the 81-coach similarity-profile pool and the model constants the team-builder page needs — formation slots, eligibility matrices, archetype labels) for the site exporter. Career facts feed the plausibility filter chips; coach nationality comes from `xx_data_populate_coach_nationalities()` in `source_data.r` (resumable TM profile scrape, priority-ordered to ranked coaches; TM intermittently 502s this page type — the populate backs off and can be re-run).
 
+### Market Benchmark Layer (`src/source_odds.R`, `src/market_benchmark.R`)
+
+The project's first **external** validation (design: `Docs/Market_Benchmark_Design.md`;
+built 2026-07-22, session log `Docs/Session_Log_2026-07-22.md`; writeup Part 10). A
+leakage-free walk-forward match forecaster tested against bookmaker **closing odds**.
+
+- **`source_odds.R`** (`od_` prefix, two tiers like `source_data.r`) — ingests
+  football-data.co.uk CSVs to `data/cache/odds/`, builds a verified team-name → TM
+  crosswalk, and emits a matches table joined to TM `team_season_id`s with de-margined
+  closing probs. 13 of 14 site leagues (11 in the main `mmz4281/<SSSS>/<div>.csv` files —
+  E0→GB1, E1→GB2, SP1→ES1, SP2→ES2, I1→IT1, D1→L1, F1→FR1, P1→PO1, N1→NL1, B1→BE1, T1→TR1;
+  Denmark/Poland are `new/`-format combined files, **not yet wired**; Croatia absent).
+  `od_data_populate(2012:2024)` caches ~143 CSVs (idempotent). Odds coalesce Pinnacle
+  closing (PSC) → Pinnacle (PS) → Bet365 closing → Bet365; **PSCH/D/A is present in every
+  2012–2024 file** — 51,807 matches, 99.9% Pinnacle-closing.
+- **The crosswalk is load-bearing and verified by reconciliation, not name score.**
+  football-data uses stable abbreviations ("Ath Madrid", "Sp Lisbon"), so `od_build_matches`
+  maps names by a **within-season greedy one-to-one assignment** (the ~20 clubs are a
+  bijection — even a mediocre scorer resolves under the constraint) built **per season**,
+  NOT the cross-season stable map (which collides two fd names onto one verein — it doubled
+  RAEC Mons 2012 to 60 games). `od_reconcile()` checks fd-derived season points against
+  `matches.rds`: **99.7% exact outside Belgium (100% for D1/E0/E1/N1/P1/SP1/T1)**; every
+  miss is a fixture-count difference (Belgian Jupiler playoffs fd carries and TM doesn't;
+  fd missing ~2 Portugal fixtures some seasons), never a misidentification. `od_name_overrides`
+  is empty — the bijection needed none. Verein ids and season are extracted from
+  `team_season_id` by string split (`od_verein_id`), avoiding regex backreferences.
+- **`market_benchmark.R`** (`mb_` prefix) — `mb_prepare()` (cached `mb_prep.rds`: the M3
+  dataset + model-independent coach-stint actuals); `mb_asof_blups(cutoff)` refits the full
+  M5 mixed model on completed seasons **strictly before cutoff** (leakage-free — prior
+  seasons are done), one table per cutoff 2012–2024, cached `mb_asof_blups.rds`; a
+  Dixon–Coles bivariate-Poisson goal model (`mb_fit_dc` joint MLE, or the ~50×-faster
+  `mb_fit_dc_glm` stacked-Poisson GLM + 1-D rho, **numerically identical** — use the GLM);
+  `mb_walkforward` (expanding-window per test season); `mb_evaluate` (McFadden conditional
+  logit `mb_condlogit` of result on market prob + model signal, plus log-loss/Brier);
+  `mb_pnl` (§4.4 backtest — bootstrap CI, favourite/longshot buckets, achievable-price
+  haircut). `mb_run(value_mode="prior")` writes `data/results/market_benchmark.rds`.
+- **Leakage is the whole game (design §3.2), and the audit is the headline.** The strength
+  input must be a **pre-season** value: `value_mode="prior"` (the club's prior-season
+  `total_team_value`, current-season fallback for promoted) is the primary; **never the
+  minutes-weighted value** (embeds realized minutes). `value_mode="current"` is kept ONLY
+  as the leakage demo: it showed a spurious incremental **+0.224, p = 10⁻²¹** beyond the
+  market that **collapsed to +0.023, p = 0.31** under prior-season value — TM's season
+  valuation has absorbed in-season results. Do not present the current-value numbers (incl.
+  its favourite-side P&L edge) as real.
+- **Verdict — a clean null (binding).** Leakage-free: the forecaster is strictly worse than
+  the closing line (log-loss 1.014 vs 0.978, market better in all 11 leagues) and adds
+  nothing beyond it — value p = 0.31, **coach BLUP p = 0.51**, and p = 0.32 even in the
+  pre-declared low-profile-manager subgroup; P&L −6.4% ROI at closing (CI excludes 0),
+  −9.9% at achievable prices. The market already prices both squad value and coaching
+  quality. **The coach term would not stably fit *inside* the DC goal model** (collinear
+  with value, sign-flipping, b ∈ ~[0,1.2]) — so the forecaster is value+home and the coach
+  is tested as a separate incremental signal, not as forecast skill. **No site surface** —
+  a null lives in the writeup (Part 10), like the CDE (Part 9) and Layer C.
+
 ### Website Layer (`src/site_export.R`, `site/`)
 
 A static presentation site lives in `site/` at the repo root — the one place the R code writes outside `src/data/` (it is a publishing target, not analysis data). Design: `Docs/Website_Design.md`; build plan: `Docs/Website_Implementation_Plan.md`.
