@@ -95,6 +95,7 @@ function renderStandings(card, rows, sort) {
       el("th", { class: "num" }, "Games"),
       el("th", { class: "num" }, "Points"),
       el("th", { class: "num" }, "Expected"),
+      el("th", { class: "num" }, "Deserved"),
       el("th", { class: "num" }, "± vs expected"),
       el("th", { class: "num" }, "PPG"))),
     el("tbody", {}, sorted.map((r, i) => el("tr", {},
@@ -108,6 +109,14 @@ function renderStandings(card, rows, sort) {
       el("td", { class: "num" }, r.residual_note
         ? el("span", { class: "muted", title: r.residual_note }, "—*")
         : fmtPoints(r.expected_points)),
+      el("td", { class: "num" }, r.expected_rank == null
+        ? el("span", { class: "muted" }, "—")
+        : el("span", { title: `Deserved ${ordinal(r.expected_rank)}, finished ${ordinal(r.actual_rank)}` },
+            ordinal(r.expected_rank),
+            r.pos_delta ? el("span", {
+              class: (r.pos_delta > 0 ? "delta-pos" : "delta-neg"),
+              style: "margin-left:6px; font-size:0.85em",
+            }, fmtSigned(r.pos_delta, 0)) : null)),
       el("td", { class: "num" }, r.residual_points == null
         ? el("span", { class: "muted" }, "—")
         : el("span", { class: r.residual_points >= 0 ? "delta-pos" : "delta-neg" },
@@ -119,6 +128,11 @@ function renderStandings(card, rows, sort) {
     card.append(el("p", { class: "footnote" },
       "* no expectation computed — insufficient market value data for that squad."));
   }
+}
+
+function ordinal(n) {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
 function coachCell(coaches) {

@@ -349,6 +349,53 @@ leakage-free walk-forward match forecaster tested against bookmaker **closing od
   is tested as a separate incremental signal, not as forecast skill. **No site surface** —
   a null lives in the writeup (Part 10), like the CDE (Part 9) and Layer C.
 
+### Validation & Fan-Surface Layer (`src/event_study.R`, `src/forward_test.R`, `src/fan_surfaces.R`)
+
+Built 2026-07-22 (session log `Docs/Session_Log_2026-07-22b.md`; writeup Parts 11–12).
+Three pure cache/results readers; the first two are **positive** validations of the coach
+grade, the third ships fan surfaces. Unlike Parts 6–10 these are not nulls.
+
+- **`event_study.R`** (`es_`) — manager-change **event study**: a within-club
+  first-difference test that the grade of *who a club hires* predicts his
+  performance-above-squad-value at the new club. Reads `mb_prep.rds` (stints) +
+  `mb_asof_blups.rds` (leakage-free as-of BLUPs; `es_load()` extends the cached
+  2012–2024 set back to 2008 via `mb_asof_blups()` and re-saves). **Leakage rule: as-of
+  cutoff = the outgoing coach's season**, which uniformly excludes both the before-
+  (`resid_out`) and after- (`resid_in`) residuals from both grades. **The validated
+  headline is the LEVEL spec** `resid_in ~ blup_in + resid_out` (+1.10, p=0.004;
+  club-clustered mixed +0.91, p=0.006; strongest for mid-season hires p=0.003). **The
+  DIFFERENCE spec** `dperf ~ dgrade` is a **confounded null** (selection × RTM: clubs
+  fire a well-graded coach during an unlucky dip that reverts) — reported only to explain
+  the divergence; do not present it as the finding. Full sample (unproven coach → BLUP 0)
+  is primary; the both-graded subset (n=610) is an underpowered robustness check.
+  `es_sacking_efficiency()`: 16.4% of mid-season sackings fired an overperformer;
+  firing the overperformer backfires (replacement dperf −0.16 vs +0.35 after a
+  defensible sacking) — surfaces Eustace-for-Rooney, Rowett-for-Zola from the residual.
+  `run_event_study()` → `event_study.rds`.
+- **`forward_test.R`** (`ft_`) — the **2025/26 forward test**: model frozen at 2024
+  (M3 coefficients + M5 BLUPs on ≤2024), predict the freshly-scraped 2025/26 holdout it
+  never saw. **Requires `xx_data_populate_league_seasons(2025)` first** (14 leagues, 252
+  teams; game counts match the 2023 reference per league). Reads `mb_prep.rds` (train) +
+  `ds_2025.rds` (holdout, built once by `build_model_dataset(2025)`). **Q1**: enhanced
+  model generalizes out-of-time (R² 0.72, still beats raw value by 0.013 PPG) — an
+  out-of-time test of the model *structure* (uses realized minutes; the pre-season
+  forecast is Part 10, not this). **Q2**: prior coach BLUPs predict 2025 overperformance
+  (`partial_residual ~ prior_blup` +1.90, p=0.0024; graded-only p=0.0036) — a true future
+  holdout, zero leakage, the cleanest single validation of the coaching signal.
+  `run_forward_test()` → `forward_test.rds`. This test is designed to **re-run each new
+  season** as a rolling scorecard (re-scrape the year, re-run).
+- **`fan_surfaces.R`** (`fs_`) — **deserved table** (`fs_deserved_table()`: expected
+  standings from the enhanced model vs actual, per league-season; over/under = the M4/M5
+  residual as a table) and **player-development leaderboard** (`fs_dev_leaderboard()`:
+  ranks `dev_resid` from `player_dev_residuals_*.rds`, the clean Part-9 by-product; it
+  describes **players not coaches** — never draw a coach ranking from it). **`pct_minutes`
+  in the player-dev cache is share-of-team-minutes (max ~0.092), NOT a 0–1 season share —
+  threshold on raw `minutes_played`.** `run_fan_surfaces()` → `fan_surfaces.rds`.
+
+Three concordant validations of the coach grade now exist on independent designs: the
+recommender payoff (Part 7, p=0.016), the event study (Part 11a, p=0.004), and the forward
+test (Part 11b, p=0.0024). Re-run all three savers after any M4/M5 refit before exporting.
+
 ### Website Layer (`src/site_export.R`, `site/`)
 
 A static presentation site lives in `site/` at the repo root — the one place the R code writes outside `src/data/` (it is a publishing target, not analysis data). Design: `Docs/Website_Design.md`; build plan: `Docs/Website_Implementation_Plan.md`.
@@ -363,6 +410,10 @@ A static presentation site lives in `site/` at the repo root — the one place t
 - Club crests: `xx_raw_team_crest()` / `xx_data_populate_team_crests()` in `source_data.r` download from the TM image CDN (`wappen/head/<id>.png` — no page scrape). 404 on both URL variants is recorded as permanently missing in `data/cache/team_crests.rds`; transient failures (including empty 200s) retry on the next run. All 496 active-league clubs are downloaded.
 - The frontend is dependency-free vanilla JS (ES modules, hand-rolled SVG charts, light/dark via CSS custom properties). Pages fetch JSON, so serve the folder (`python -m http.server` in `site/`) rather than opening `file://`. Grades never render without their cut label ("Top-5 leagues" / "All leagues") — the two cuts use separate grading curves.
 - **Team builder** (`site/builder.html` + `js/builder.js`, design: `Docs/Team_Builder_Design.md`): build a custom XI on a drawn pitch (any of the 22 formations, click-to-pick from all big-5 player-seasons 2015/16–2024/25) and get the similarity-based coach suggestions computed client-side — cosine similarity on archetype shares + the 85/15 quality blend, numerically identical to `se_suggestions()` (verified against an R fixture). `se_export_builder()` writes `site/data/builder/{players,coaches,meta}.json`; formation pitch coordinates live in `se_formation_layouts` (site_export.R) and are validated against `cr_formation_slots` at export. Player photos: `xx_raw_player_image_url()` / `xx_data_populate_player_images()` in `source_data.r` (resumable, priority-ordered by career minutes, NULL/NA fetch-vs-missing semantics like the nationality scraper; lookup `data/cache/player_images.rds`, files `data/images/players/<id>`). The builder never shows predicted points for a fantasy XI (outside the M3 model's support) and carries the same descriptive-similarity labeling as team pages.
+- **Fan/validation surfaces** (Parts 11–12, shipped 2026-07-22): the deserved table rides on the existing league standings as a "Deserved" column (expected rank + position swing, `se_export_leagues`); `site/players.html` + `js/players.js` (`se_export_players()`) is the player-development leaderboard; `site/validation.html` + `js/validation.js` (`se_export_validation()`) is the "Does it work?" report card (forward test + event study + the Part-7 payoff). Both new pages are linked from the header nav in `components.js`.
+  - The players page leads with **`charts.js growthCurves()`** — the CDE baseline as an age curve per position, i.e. the expectation the leaderboard's residual is measured against. `se_growth_curves()` **refits the CDE-total baseline from `player_dev_residuals_<cut>.rds`** (every RHS column is in that file) and **asserts it still reproduces the stored `pred_total`** — the check that fires if `cvg_fit_baselines()`'s spec ever changes. Curves are **standardized (g-computation)**: age and position are overwritten on a fixed sample of real player-seasons, so a position gap is an age × role effect and not a price-mix difference; the consequence to keep in the footnote is that the curve runs *below* what real teenagers average, because they also start cheaper.
+  - The validation page's lede is the **three-validation block** (`renderValidations()` → `.val-card`): per card, a design-type chip in the eyebrow (out-of-sample forecast / natural experiment / future holdout), the question, a short **"What the test does"** paragraph (the data, the mechanic, what is withheld), the result *in points per 38-game season per SD of grade* with the p-value as a chip, a one-clause caveat, and a plain-language "What this means" + writeup deep link. **Tests 1 and 2 are the pair readers conflate** — both are "does the grade predict hires?" — so the chips separate them and test 2's copy *opens* by naming the difference (test 1 pools appointments across hundreds of clubs; test 2 holds one club fixed across a single swap). Do not compress this back to one line per test: a shorter draft was tried and the two hiring tests became indistinguishable. The "Why it takes three" card carries the point that each design is vulnerable to something the other two are not. Effect sizes are computed at export (`pts_per_sd`), and the Part-7 payoff numbers are derived from `recommender.rds$meta$payoff` — **the published p = 0.016 is the one-sided paired test** across LOSO folds, matching the pre-registered directional acceptance rule (two-sided would be 0.031 — the wrong test, not a stricter one). **Caveats stay on the cards, never demoted to a footnote:** the realized-vs-pre-hire framing (p = 0.052), the confounded grade-*gap* null, and the single-season limit.
+  - **Four-series colour is `CAT4` in `charts.js`, and the ORDER is load-bearing** — blue → orange → aqua → yellow (`--series-1/-3/-2/-4`) is the reference palette's validated slot sequence, the only thing that keeps the adjacent pairs colourblind-separable (worst adjacent ΔE 9.1 light / 8.4 dark; the same four hues **fail** the all-pairs gate, so never re-order or cycle them, and never use this set for a scatter). Aqua and yellow sit below 3:1 on the light surface, which is why every curve also carries a direct end label in the right gutter.
 
 ## Data Schemas
 

@@ -995,6 +995,9 @@ se_export_leagues <- function(d) {
 
     standings <- lapply(sort(unique(lr$season)), function(yr) {
       rows <- lr |> filter(season == yr) |> arrange(desc(total_points))
+      # deserved position = rank by squad-value-expected points within the season
+      rows$expected_rank <- rank(-rows$expected_points, ties.method = "min", na.last = "keep")
+      rows$actual_rank   <- seq_len(nrow(rows))
       lapply(seq_len(nrow(rows)), function(i) {
         s <- rows[i, ]
         cs <- coaches_map[[s$team_season_id]]
@@ -1006,6 +1009,9 @@ se_export_leagues <- function(d) {
           points          = s$total_points,
           ppg             = se_num(s$points_per_game),
           expected_points = se_num(s$expected_points, 1),
+          actual_rank     = as.integer(s$actual_rank),
+          expected_rank   = if (is.na(s$expected_rank)) NULL else as.integer(s$expected_rank),
+          pos_delta       = if (is.na(s$expected_rank)) NULL else as.integer(s$expected_rank - s$actual_rank),
           residual_points = se_num(s$residual_points, 1),
           residual_ppg    = se_num(s$residual),
           is_b_team       = s$is_b_team,
@@ -1188,6 +1194,198 @@ se_export_writeup <- function() {
   cat("writeup.html generated (", length(heads), "TOC sections )\n")
 }
 
+# --- player-development leaderboard (Part 12) --------------------------------------
+
+se_export_players <- function() {
+  f <- "data/results/fan_surfaces.rds"
+  if (!file.exists(f)) { cat("fan_surfaces.rds missing — players page skipped\n"); return(invisible()) }
+  lb <- readRDS(f)$dev_leaderboard
+  pretty <- function(slug) tools::toTitleCase(gsub("-", " ", slug))
+  top <- lb |> head(300) |> mutate(club_name = vapply(club, pretty, character(1)))
+
+  rows <- lapply(seq_len(nrow(top)), function(i) {
+    s <- top[i, ]
+    list(name = s$player_name, pos = s$position_group, age = as.integer(s$age),
+         club = s$club_name, league = s$league, season = as.integer(s$season),
+         v0 = s$value_t_m, v1 = s$value_next_m, mult = s$multiple, dev = se_num(s$dev_resid))
+  })
+  bypos <- lb |> group_by(position_group) |>
+    summarize(n = n(), mean_dev = se_num(mean(dev_resid), 3), .groups = "drop") |>
+    arrange(desc(mean_dev))
+  out <- list(
+    players     = rows,
+    positions   = I(sort(unique(top$position_group))),
+    leagues     = I(sort(unique(top$league))),
+    by_position = lapply(seq_len(nrow(bypos)), function(i)
+      list(pos = bypos$position_group[i], n = bypos$n[i], mean_dev = bypos$mean_dev[i])),
+    growth      = se_growth_curves(),
+    meta        = list(n_pool = nrow(lb), shown = nrow(top), min_minutes = 1500, min_value_m = 1)
+  )
+  se_write_json(out, file.path(se_site_dir, "data/players.json"))
+  cat("players.json exported (", nrow(top), "of", nrow(lb), "qualifying)\n")
+}
+
+# The baseline the leaderboard is measured against, as an age curve per position:
+# how much value the CDE model expects a player to gain over the next season.
+#
+# The model is refit here from the saved residual file rather than re-derived:
+# player_dev_residuals_<cut>.rds carries every right-hand-side variable, so this
+# formula (identical to cvg_fit_baselines()'s CDE-total spec) reproduces the
+# stored pred_total exactly — verified to 1e-11, and re-checked on every export.
+#
+# Curves are standardized (g-computation): each grid point predicts over a fixed
+# sample of real player-seasons with age and position overwritten, then averages.
+# That holds starting value, league and season constant across the whole chart, so
+# a position gap is an age x position effect and not a price-mix difference —
+# which is what "by position" has to mean. It also runs BELOW the raw average for
+# teenagers, who really are cheaper than the standardization population, so the
+# per-age observed mean rides along for context.
+se_growth_curves <- function(cut = "14league", min_n = 100, std_n = 4000) {
+  f <- sprintf("data/results/player_dev_residuals_%s.rds", cut)
+  if (!file.exists(f)) { cat("  (no", f, "— growth curve skipped)\n"); return(NULL) }
+  pd <- readRDS(f)
+
+  m <- lm(g ~ splines::ns(player_age, 5) * position_group +
+            splines::ns(log_value_t, 4) + prior_growth + has_prior +
+            factor(league) + factor(season), data = pd)
+  drift <- max(abs(fitted(m) - pd$pred_total))
+  if (drift > 1e-6) {
+    warning("growth-curve refit no longer reproduces pred_total (max |diff| = ",
+            signif(drift, 3), ") — the CDE baseline spec has changed")
+  }
+
+  set.seed(20260722)
+  std <- pd[sample(nrow(pd), min(std_n, nrow(pd))), ]
+  counts <- pd |> count(position_group, player_age, name = "n")
+  obs <- pd |> group_by(position_group, player_age) |>
+    summarize(obs = mean(g), .groups = "drop")
+
+  series <- lapply(sort(unique(pd$position_group)), function(p) {
+    cnt <- counts |> filter(position_group == p, n >= min_n) |> arrange(player_age)
+    pts <- lapply(cnt$player_age, function(a) {
+      nd <- std
+      nd$position_group <- p
+      nd$player_age <- a
+      pct <- 100 * (exp(mean(predict(m, newdata = nd))) - 1)
+      o <- obs$obs[obs$position_group == p & obs$player_age == a]
+      list(age = as.integer(a), pct = se_num(pct, 2),
+           obs = se_num(100 * (exp(o) - 1), 2),
+           n = as.integer(cnt$n[cnt$player_age == a]))
+    })
+    list(pos = p, points = pts)
+  })
+
+  cat("  growth curves:", nrow(pd), "player-seasons,",
+      sum(vapply(series, function(s) length(s$points), integer(1))), "points\n")
+  list(
+    series = series,
+    meta = list(cut = cut, n_rows = nrow(pd),
+                n_players = length(unique(pd$player_id)),
+                first_season = min(pd$season), last_season = max(pd$season),
+                r2 = se_num(summary(m)$r.squared, 3), min_n = min_n)
+  )
+}
+
+# --- validation report card (Part 11) ----------------------------------------------
+
+se_export_validation <- function() {
+  ef <- "data/results/event_study.rds"; ff <- "data/results/forward_test.rds"
+  if (!file.exists(ef) || !file.exists(ff)) {
+    cat("event_study/forward_test rds missing — validation page skipped\n"); return(invisible())
+  }
+  es <- readRDS(ef); ft <- readRDS(ff)
+
+  # forward test ------------------------------------------------------------------
+  q1e <- ft$q1_enh; q1b <- ft$q1_base
+  q2  <- ft$q2_stint                      # coef matrix; row "prior_blup"
+  h   <- ft$holdout
+  rmse <- function(a, p) sqrt(mean((a - p)^2, na.rm = TRUE))
+  fwd <- list(
+    n_team_seasons = nrow(h), season = "2025/26",
+    enh_r2  = se_num(q1e[["R2"]], 3), enh_cor = se_num(q1e[["cor"]], 3),
+    enh_rmse = se_num(q1e[["RMSE"]], 3), base_rmse = se_num(q1b[["RMSE"]], 3),
+    rmse_edge = se_num(q1b[["RMSE"]] - q1e[["RMSE"]], 4),
+    mean_pts_err = se_num(mean(abs(h$total_points - h$pred_enh * h$games_played), na.rm = TRUE), 1),
+    q2_slope = se_num(q2["prior_blup", 1], 2), q2_p = signif(q2["prior_blup", 4], 2),
+    rmse_noaug = se_num(rmse(h$points_per_game, h$pred_enh), 3),
+    rmse_aug   = se_num(rmse(h$points_per_game, h$pred_aug), 3),
+    n_stints   = nrow(ft$stints),
+    n_prior    = sum(ft$stints$has_prior),
+    # the slope is PPG per unit of BLUP, which means nothing to a reader — restate
+    # it as points over a 38-game season for a coach one SD above average
+    pts_per_sd = se_num(q2["prior_blup", 1] *
+                          sd(ft$stints$prior_blup, na.rm = TRUE) * 38, 1)
+  )
+  dt <- ft$deserved_2025
+  fwd_over <- dt |> arrange(desc(over_points)) |> head(8) |>
+    transmute(team = team_name, league, pts = total_points,
+              xpts = se_num(expected_points, 0), over = se_num(over_points, 0))
+  fwd_under <- dt |> arrange(over_points) |> head(8) |>
+    transmute(team = team_name, league, pts = total_points,
+              xpts = se_num(expected_points, 0), over = se_num(over_points, 0))
+  fwd_coaches <- ft$stints |> filter(n_games >= 20) |> arrange(desc(partial_residual_ppg)) |>
+    head(8) |> transmute(coach = coach_name, team = team_name, league,
+                         resid = se_num(partial_residual_ppg, 2))
+  tolist <- function(df) lapply(seq_len(nrow(df)), function(i) as.list(df[i, ]))
+
+  # event study -------------------------------------------------------------------
+  ev <- es$events
+  midp <- tryCatch({
+    m <- lm(resid_in ~ blup_in + resid_out, data = ev[ev$event_type == "midseason", ])
+    signif(coef(summary(m))["blup_in", 4], 2)
+  }, error = function(e) NA)
+  s <- es$sacking
+  harsh <- s[s$harsh, ]
+  evt <- list(
+    n_changes = nrow(ev), n_clubs = length(unique(ev$club_id)),
+    level_slope = se_num(es$level_slope, 2), level_p = signif(es$level_p, 2),
+    level_p_mixed = signif(es$level_p_mixed, 2), mid_p = midp,
+    n_sackings = nrow(s), pct_harsh = se_num(100 * mean(s$harsh), 1),
+    backfire_harsh = se_num(mean(s$dperf[s$harsh]), 2),
+    backfire_defensible = se_num(mean(s$dperf[!s$harsh]), 2),
+    improve_harsh = se_num(100 * mean(s$dperf[s$harsh] > 0), 0),
+    improve_defensible = se_num(100 * mean(s$dperf[!s$harsh] > 0), 0),
+    n_midseason = sum(ev$event_type == "midseason"),
+    first_season = min(ev$season), last_season = max(ev$season),
+    pts_per_sd = se_num(es$level_slope * sd(ev$blup_in, na.rm = TRUE) * 38, 1)
+  )
+  # feature the recognizable-league cases (small-league 22-game seasons give noisier,
+  # less illustrative swings) — this surfaces Rowett->Zola, Eustace->Rooney, etc.
+  big <- c("premier-league", "championship", "laliga", "serie-a", "bundesliga",
+           "ligue-1", "eredivisie", "liga-portugal")
+  harsh_ex <- harsh |> filter(league %in% big) |> arrange(dperf) |> head(9) |>
+    transmute(season = as.integer(season), club = team_name, league,
+              sacked = out_coach_name, resid_out = se_num(resid_out, 2),
+              hired = in_coach_name, resid_in = se_num(resid_in, 2),
+              swing = se_num(dperf, 2))
+
+  # recommender payoff (Part 7) -----------------------------------------------------
+  # The third validation. Read from the stored LOSO folds rather than hardcoded, so
+  # the card can state what the test actually did. The published p = 0.016 is the
+  # ONE-SIDED paired test across folds: the pre-registered acceptance rule is
+  # directional (a layer ships only if it does not hurt out-of-sample RMSE), so a
+  # two-sided p (0.031) would be the wrong test, not a stricter one.
+  pay <- tryCatch(readRDS("data/results/recommender.rds")$meta$payoff,
+                  error = function(e) NULL)
+  payoff <- if (is.null(pay)) NULL else {
+    tt <- t.test(pay$R0, pay$R1, paired = TRUE)
+    list(n_pairings = sum(pay$n_test), n_folds = nrow(pay),
+         rmse0 = se_num(mean(pay$R0), 4), rmse1 = se_num(mean(pay$R1), 4),
+         folds_improved = sum(pay$R1 < pay$R0),
+         p = signif(tt$p.value / 2, 2))
+  }
+
+  out <- list(
+    forward = c(fwd, list(over = tolist(fwd_over), under = tolist(fwd_under),
+                          coaches = tolist(fwd_coaches))),
+    event   = c(evt, list(harsh_examples = tolist(harsh_ex))),
+    payoff  = payoff,
+    recommender_p = if (is.null(payoff)) 0.016 else payoff$p
+  )
+  se_write_json(out, file.path(se_site_dir, "data/validation.json"))
+  cat("validation.json exported\n")
+}
+
 # --- entry point -------------------------------------------------------------------
 
 export_site_data <- function() {
@@ -1203,6 +1401,8 @@ export_site_data <- function() {
   se_export_leagues(d)
   se_export_small(d)
   se_export_builder(d)
+  se_export_players()
+  se_export_validation()
   se_copy_assets(d)
   se_export_writeup()
   cat("\nSITE EXPORT COMPLETE ->", normalizePath(se_site_dir, mustWork = FALSE), "\n")

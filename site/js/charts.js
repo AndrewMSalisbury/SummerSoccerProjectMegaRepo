@@ -52,8 +52,8 @@ function chartSvg(w, h) {
                         role: "img" });
 }
 
-function yAxis(svg, y, x0, x1, fmt = v => String(v)) {
-  for (const t of y.ticks(5)) {
+function yAxis(svg, y, x0, x1, fmt = v => String(v), n = 5) {
+  for (const t of y.ticks(n)) {
     svg.append(
       svgEl("line", { x1: x0, x2: x1, y1: y(t), y2: y(t),
                       stroke: GRID, "stroke-width": 1 }),
@@ -608,4 +608,149 @@ export function divergingBars(host, rows) {
   }
   render();
   onResize(host, render);
+}
+
+// ---------- player value-growth curves by position ----------
+
+// Four categorical hues in the reference palette's validated slot order
+// (blue -> orange -> aqua -> yellow). The ORDER is the colorblind-safety
+// mechanism, not a preference: it is the assignment sequence the adjacent-pair
+// gate was validated on (worst adjacent CVD ΔE 9.1 light / 8.4 dark). Series are
+// assigned from the front of this list and never cycled or re-ordered, and the
+// two light-mode steps below 3:1 contrast (aqua, yellow) are why every line also
+// carries a direct end label.
+export const CAT4 = ["var(--series-1)", "var(--series-3)",
+                     "var(--series-2)", "var(--series-4)"];
+
+// series: [{key, label, color, points: [{age, pct, obs, n}]}] — one curve per
+// position group. opts.highlight dims every other curve (used by the page's
+// position filter). Returns { setHighlight }.
+export function growthCurves(host, series, opts = {}) {
+  const tt = tooltip();
+  let highlight = opts.highlight || null;
+
+  const ok = series.filter(s => s.points.length > 1);
+  const ages = [...new Set(ok.flatMap(s => s.points.map(p => p.age)))]
+    .sort((a, b) => a - b);
+
+  function render() {
+    if (!ok.length || !ages.length) {
+      clear(host).append(el("p", { class: "muted" }, "No data."));
+      return;
+    }
+    const W = measuredWidth(host);
+    const H = 380;
+    // narrow viewports get short position codes so the label gutter can shrink
+    const narrow = W < 560;
+    const m = { top: 18, right: narrow ? 44 : 112, bottom: 46, left: 50 };
+    const svg = chartSvg(W, H);
+
+    const vals = ok.flatMap(s => s.points.map(p => p.pct));
+    const lo = Math.min(0, Math.min(...vals)), hi = Math.max(0, Math.max(...vals));
+    const pad = (hi - lo) * 0.08;
+    const y = scaleLinear([lo - pad, hi + pad], [H - m.bottom, m.top]);
+    const x = scaleLinear([ages[0], ages[ages.length - 1]],
+                          [m.left + 10, W - m.right - 10]);
+
+    yAxis(svg, y, m.left, W - m.right,
+          v => `${v > 0 ? "+" : ""}${Math.round(v)}%`, 7);
+
+    // the zero line is the story ("value stops growing here"), so it is drawn
+    // heavier than the gridlines it sits among
+    svg.append(
+      svgEl("line", { x1: m.left, x2: W - m.right, y1: y(0), y2: y(0),
+        stroke: BASE, "stroke-width": 1.5 }),
+      svgEl("text", { x: m.left + 6, y: y(0) - 6, "font-size": 10.5, fill: MUTED },
+        "no change"));
+
+    // x axis: thin the age ticks to fit
+    const every = Math.ceil(ages.length / Math.max(4, Math.floor((W - 140) / 42)));
+    ages.forEach((a, i) => {
+      if (i % every) return;
+      svg.append(svgEl("text", { x: x(a), y: H - m.bottom + 18,
+        "text-anchor": "middle", "font-size": 11, fill: MUTED }, String(a)));
+    });
+    svg.append(svgEl("text", { x: (m.left + W - m.right) / 2, y: H - 8,
+      "text-anchor": "middle", "font-size": 11, fill: MUTED }, "Age"));
+
+    const dim = s => highlight && s.key !== highlight;
+
+    for (const s of ok) {
+      svg.append(svgEl("path", {
+        d: s.points.map((p, i) => `${i ? "L" : "M"}${x(p.age)},${y(p.pct)}`).join(""),
+        fill: "none", stroke: s.color, "stroke-width": highlight === s.key ? 2.5 : 2,
+        "stroke-linecap": "round", "stroke-linejoin": "round",
+        opacity: dim(s) ? 0.22 : 1 }));
+    }
+
+    // Direct end labels, all parked in the right gutter and pushed apart where
+    // the curves converge (they do, sharply, after 30) — with a hairline leader
+    // back to each curve's own end, which sits at a different age per position.
+    // Text wears the ink token; the colored dot and leader carry identity.
+    const gutterX = W - m.right + 10;
+    const ends = ok.map(s => {
+      const last = s.points[s.points.length - 1];
+      return { s, cx: x(last.age), cy: y(last.pct), ly: y(last.pct) };
+    }).sort((a, b) => a.ly - b.ly);
+    const gap = 15, top = m.top + 6, bot = H - m.bottom - 6;
+    for (let i = 1; i < ends.length; i++) {
+      ends[i].ly = Math.max(ends[i].ly, ends[i - 1].ly + gap);
+    }
+    const spill = ends[ends.length - 1].ly - bot;
+    if (spill > 0) for (const e of ends) e.ly = Math.max(top, e.ly - spill);
+    for (const e of ends) {
+      const o = dim(e.s) ? 0.22 : 1;
+      svg.append(
+        svgEl("path", { d: `M${e.cx + 5},${e.cy} L${gutterX - 5},${e.ly}`,
+          fill: "none", stroke: e.s.color, "stroke-width": 1, opacity: o * 0.55 }),
+        svgEl("circle", { cx: e.cx, cy: e.cy, r: 4, fill: e.s.color, stroke: SURF,
+          "stroke-width": 2, opacity: o }),
+        svgEl("text", { x: gutterX, y: e.ly, "dominant-baseline": "central",
+          "font-size": 11.5, fill: INK2, opacity: dim(e.s) ? 0.35 : 1 },
+          narrow ? e.s.key : e.s.label));
+    }
+
+    // crosshair + one tooltip per age column, listing every position present
+    const cross = svgEl("line", { x1: 0, x2: 0, y1: m.top, y2: H - m.bottom,
+      stroke: MUTED, "stroke-width": 1, opacity: 0, "pointer-events": "none" });
+    const dots = svgEl("g", { opacity: 0, "pointer-events": "none" });
+    svg.append(cross, dots);
+
+    const colW = (W - m.right - m.left) / Math.max(1, ages.length - 1);
+    for (const a of ages) {
+      const hit = svgEl("rect", { x: x(a) - colW / 2, y: m.top, width: colW,
+        height: H - m.top - m.bottom, fill: "transparent" });
+      hit.addEventListener("pointermove", e => {
+        const here = ok.map(s => ({ s, p: s.points.find(q => q.age === a) }))
+          .filter(d => d.p)
+          .sort((d1, d2) => d2.p.pct - d1.p.pct);
+        cross.setAttribute("x1", x(a)); cross.setAttribute("x2", x(a));
+        cross.setAttribute("opacity", 0.5);
+        clear(dots);
+        for (const d of here) {
+          dots.append(svgEl("circle", { cx: x(a), cy: y(d.p.pct), r: 4.5,
+            fill: d.s.color, stroke: SURF, "stroke-width": 2 }));
+        }
+        dots.setAttribute("opacity", 1);
+        tt.show(e, `Age ${a}`, here.map(d => ({
+          label: d.s.label,
+          value: `${d.p.pct > 0 ? "+" : ""}${d.p.pct.toFixed(1)}%`,
+          color: d.s.color })));
+      });
+      hit.addEventListener("pointerleave", () => {
+        cross.setAttribute("opacity", 0);
+        dots.setAttribute("opacity", 0);
+        tt.hide();
+      });
+      svg.append(hit);
+    }
+
+    clear(host).append(svg);
+  }
+
+  render();
+  onResize(host, render);
+  return {
+    setHighlight(k) { highlight = k || null; render(); },
+  };
 }

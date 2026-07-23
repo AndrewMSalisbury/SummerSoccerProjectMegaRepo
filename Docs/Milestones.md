@@ -110,6 +110,32 @@ follow project convention — writeup only, no site surface.
 
 ---
 
+## Validation & Fan Surfaces ✓
+**Completed: July 22, 2026**
+
+Four new directions, all returning **positive** results — a rare non-null batch. Two are
+independent validations of the coach quality grade on designs no earlier test used, and
+two are fan-facing surfaces built from existing by-products. **(11a) Manager-change event
+study:** a within-club first-difference test over 2,899 changes (2005–2024, 14 leagues,
+leakage-clean via as-of BLUPs) showing the grade of *who a club hires* predicts his
+performance-above-squad-value at the new club (+1.10, p=0.004; club-clustered p=0.006),
+strongest for mid-season crisis hires — while the naive incoming-vs-outgoing *gap* is a
+confounded null (selection × regression-to-the-mean). Its sacking-efficiency extension
+finds 16.4% of mid-season sackings fire an overperformer and that doing so backfires,
+surfacing Eustace-for-Rooney and Rowett-for-Zola from the residual alone. **(11b) 2025/26
+forward test:** the model frozen at 2024 predicts the freshly-scraped 2025/26 holdout it
+never saw — the enhanced model generalizes out-of-time (R² 0.72, still beats raw value by
+0.013 PPG) and the prior coach BLUPs predict the future season's overperformance
+(p=0.0024, zero leakage) — the cleanest single validation in the project, and designed to
+re-run each new season. **(12) Fan surfaces:** a "deserved table" (residual as league
+standings — Leicester 2015/16 deserved 10th) and a player-development leaderboard (the
+clean CDE by-product; Ederson, de Jong, Vardy). With the recommender payoff (Part 7), the
+grade now has three concordant validations on independent designs. Pipeline:
+`src/event_study.R`, `src/forward_test.R`, `src/fan_surfaces.R`; findings:
+`Summary_of_Findings.md` Parts 11–12; session log: `Docs/Session_Log_2026-07-22b.md`.
+
+---
+
 ## Website ✓
 **Completed: July 10, 2026**
 
