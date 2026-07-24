@@ -2,7 +2,7 @@
 #
 # Exports the published results to site/ as JSON + assets for the static
 # website (Docs/Website_Design.md sec. 6.3, Website_Implementation_Plan.md
-# Phase 1). Reads only from data/ and ../Docs/Summary_of_Findings.md; writes
+# Phase 1). Reads only from data/ and ../Docs/How_It_Works.md; writes
 # only to ../site/data, ../site/assets, and ../site/writeup.html. Writing
 # outside data/ is the documented exception to the data-layer rule: site/ is
 # a publishing target, not analysis data. Hand-written site files (html, css,
@@ -1161,7 +1161,7 @@ se_slugify <- function(x) {
 }
 
 se_export_writeup <- function() {
-  md <- readLines("../Docs/Summary_of_Findings.md", encoding = "UTF-8")
+  md <- readLines("../Docs/How_It_Works.md", encoding = "UTF-8")
   html <- commonmark::markdown_html(paste(md, collapse = "\n"),
                                     extensions = TRUE)
 
@@ -1179,7 +1179,7 @@ se_export_writeup <- function() {
   page <- paste0(
     '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n',
     '<meta name="viewport" content="width=device-width, initial-scale=1">\n',
-    '<title>Summary of Findings — Football Coach Valuation</title>\n',
+    '<title>How it works — Football Coach Valuation</title>\n',
     '<link rel="stylesheet" href="css/site.css">\n',
     '<script src="js/theme.js"></script>\n</head>\n<body>\n',
     '<div id="site-header"></div>\n',

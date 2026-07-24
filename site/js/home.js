@@ -29,7 +29,7 @@ async function init() {
     el("div", { class: "hero" },
       el("h1", {}, "Coach Rankings"),
       el("p", { class: "hero-link" },
-        el("a", { href: "writeup.html" }, "How the model works — read the full writeup →"))),
+        el("a", { href: "writeup.html" }, "How the model works — read the guide →"))),
     el("div", { class: "stat-row" },
       statTile("Leagues", String(d.leagues)),
       statTile("Seasons", `${d.last_season - d.first_season + 1}`,

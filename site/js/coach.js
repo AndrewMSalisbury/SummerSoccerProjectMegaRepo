@@ -70,8 +70,8 @@ function renderStrengths(c) {
     "claim — it is the same residual the grade rests on, re-cut by goals. Goal " +
     "difference tracks points closely but not perfectly (r = 0.86 across " +
     "team-seasons), so the split characterises an edge without fully explaining " +
-    "it: a coach can grade well on points with little goal-difference edge. " +
-    "See the writeup, Part 8."));
+    "it: a coach can grade well on points with little goal-difference edge. See ",
+    el("a", { href: "writeup.html" }, "how it works"), "."));
   return card;
 }
 
@@ -138,7 +138,7 @@ function renderStyle(c) {
     "the squad's player-type mix alone accounts for 69% of possession. Only " +
     "lineup stability and pressing intensity are more his than the club's. " +
     "Descriptive only — none of these axes predicts coaching quality once club " +
-    "size is accounted for. See the writeup, Part 8."));
+    "size is accounted for. See ", el("a", { href: "writeup.html" }, "how it works"), "."));
   return card;
 }
 
@@ -401,6 +401,7 @@ function renderFit(c) {
   }
   card.append(el("p", { class: "footnote" },
     "Descriptive finding: with 4–10 stints per coach, no individual coach × " +
-    "player-type test survives multiple-testing correction. See the writeup, Part 6."));
+    "player-type test survives multiple-testing correction. See ",
+    el("a", { href: "writeup.html" }, "how it works"), "."));
   return card;
 }

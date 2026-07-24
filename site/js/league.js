@@ -178,7 +178,7 @@ function renderStats(L) {
   wrap.append(el("p", { class: "footnote" },
     "Extreme entries from pre-2010 seasons in smaller leagues can reflect " +
     "sparse Transfermarkt market-value coverage rather than genuine " +
-    "over/under-performance — see the writeup's limitations."));
+    "over/under-performance — see ", el("a", { href: "writeup.html" }, "how it works"), "."));
   return wrap;
 }
 

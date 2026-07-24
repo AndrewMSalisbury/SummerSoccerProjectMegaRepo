@@ -40,7 +40,7 @@ async function init() {
       "getting more expensive."),
     el("p", { class: "footnote", style: "margin:0" },
       "This is a player descriptor, not a coach one. The project's Coach Development " +
-      "Effect analysis (writeup Part 9) found that the coach's share of value growth does " +
+      "Effect analysis found that the coach's share of value growth does " +
       "not repeat across his career, so no coaching credit is drawn from this list.")));
 
   const chart = renderGrowth(main, D.growth);

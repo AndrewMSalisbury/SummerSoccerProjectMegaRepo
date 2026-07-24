@@ -194,8 +194,6 @@ function renderValidations(V) {
       p: P.p,
       caveat: "Against realized squad value; the stricter pre-hire framing is weaker (p = 0.052).",
       means: "Grades are worth consulting at the moment of hiring, not just in hindsight.",
-      link: ["writeup.html#part-7-which-coach-should-a-given-team-hire-coach-recommender",
-             "Part 7"],
     }));
   }
 
@@ -215,8 +213,6 @@ function renderValidations(V) {
     caveat: `Strongest for mid-season crisis hires (${pfmt(E.mid_p)}); the gap between the ` +
       "incoming and outgoing grades predicts nothing.",
     means: "The effect follows the coach rather than the squad — and matters most when a club hires in a panic.",
-    link: ["writeup.html#part-11-two-independent-new-validations-the-natural-experiment-and-the-future-season",
-           "Part 11a"],
   }));
 
   cards.push(valCard({
@@ -234,8 +230,6 @@ function renderValidations(V) {
     caveat: `Adding the grade cut forecast error ${F.rmse_noaug.toFixed(3)} → ` +
       `${F.rmse_aug.toFixed(3)} PPG. One season — the test is re-run every year.`,
     means: "The grades carry genuine forward-looking information, with no hindsight of any kind.",
-    link: ["writeup.html#part-11-two-independent-new-validations-the-natural-experiment-and-the-future-season",
-           "Part 11b"],
   }));
 
   const grid = el("div", { class: "val-grid" }, ...cards);
@@ -245,9 +239,7 @@ function renderValidations(V) {
       "Alone, each has a hole: the first compares coaches across different clubs, the " +
       "second is fitted on history, the third is a single season. Each is vulnerable to " +
       "something the other two are not, and all three agree. Bookmakers' closing odds " +
-      "price the same signal, from outside the project entirely (",
-      el("a", { href: "writeup.html#part-10-can-the-model-beat-the-betting-market-market-benchmark" },
-        "Part 10"), ")."));
+      "price the same signal, from outside the project entirely."));
   return el("div", {}, grid, why);
 }
 
@@ -266,7 +258,6 @@ function valCard(c) {
       c.caveat ? el("p", { class: "val-caveat", style: "margin:4px 0 0" }, c.caveat) : null),
     el("div", { class: "val-row val-rules" },
       el("span", { class: "val-label" }, "What this means"),
-      c.means, " ",
-      el("a", { href: c.link[0] }, c.link[1], " →")));
+      c.means));
 }
 

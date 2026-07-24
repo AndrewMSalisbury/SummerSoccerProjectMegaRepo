@@ -35,7 +35,7 @@ export async function initHeader() {
       el("a", { href: "players.html" }, "Player growth"),
       el("a", { href: "builder.html" }, "Team builder"),
       el("a", { href: "validation.html" }, "Does it work?"),
-      el("a", { href: "writeup.html" }, "Writeup")),
+      el("a", { href: "writeup.html" }, "How it works")),
     el("div", { class: "search-box" }, input, results),
     themeToggle()));
 
