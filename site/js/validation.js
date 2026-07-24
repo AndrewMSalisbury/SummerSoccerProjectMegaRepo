@@ -4,6 +4,7 @@
 
 import { loadJSON, el, clear, showError, fmtSeason, fmtSigned } from "./data.js";
 import { initHeader, statTile } from "./components.js";
+import { expectedVsActual, gradeVsOutcome } from "./charts.js";
 
 initHeader();
 init();
@@ -51,37 +52,70 @@ async function init() {
     "one standard deviation above average: a real but modest edge next to squad value."));
 
   // ---- forward test detail (test 3 above) ----
+  // Two charts, because test 3 asks two questions in sequence: did the squad-value
+  // model survive an unseen year (Q1), and did the grades built on top of it predict
+  // that year (Q2)? A p-value states the answers; these show them.
   main.append(el("h2", {}, `Inside test 3: the ${F.season} season`));
   main.append(el("div", { class: "card" },
     el("p", { style: "margin:0" },
-      "Before asking whether the coach grades predicted the new season, the squad-value " +
-      "model underneath them had to survive it — a model that no longer worked would make " +
-      "the grades meaningless. It held, with no degradation, and the minutes-weighted " +
-      "version kept exactly the edge over raw squad value that it showed on the original " +
-      "cross-validation.")));
+      "Two things had to hold for the future test to mean anything. First the " +
+      "squad-value model underneath the grades had to survive a year it had never " +
+      "seen — a model that no longer worked would make the grades meaningless. Then " +
+      "the coaches it had already rated had to go on and beat their squads. Both did, " +
+      "and each is a picture rather than a claim.")));
 
-  main.append(el("div", { class: "stat-row" },
-    statTile("Accuracy (R²)", F.enh_r2.toFixed(2), `correlation ${F.enh_cor.toFixed(2)}`),
-    statTile("Average miss", `${F.mean_pts_err} pts`, "per team over the season"),
-    statTile("Minutes-weighting edge", `+${F.rmse_edge.toFixed(3)}`,
-      "PPG better than raw squad value — same as the original test")));
-
-  const grid = el("div", { style:
-    "display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px" });
-  grid.append(
-    overCard(`${F.season}: beat their squad most`, F.over, "delta-pos"),
-    overCard(`${F.season}: fell shortest`, F.under, "delta-neg"));
-  main.append(grid);
-
-  const cc = el("div", { class: "card", style: "margin-top:16px" },
-    el("h3", { style: "margin-top:0" }, `Coaches who beat expectation most in ${F.season}`));
-  for (const c of F.coaches) {
-    cc.append(el("div", { style: "display:flex; gap:8px; padding:3px 0; align-items:baseline" },
-      el("span", { style: "flex:1" }, el("strong", {}, c.coach),
-        el("span", { class: "muted" }, ` · ${c.team}`)),
-      el("span", { class: "delta-pos" }, `${fmtSigned(c.resid, 2)} PPG`)));
+  if (F.scatter && F.scatter.length) {
+    const c1 = el("div", { class: "chart-card" },
+      el("div", { class: "chart-title" },
+        `Every club in ${F.season}, against what the frozen model expected`),
+      el("div", { class: "chart-sub" },
+        `One dot per club — ${F.n_team_seasons} of them across 14 leagues, none of which ` +
+        "existed as data when the model was built. The diagonal is a flawless forecast; " +
+        "how far a club sits above or below it is exactly the over- or under-performance " +
+        "the coach grades are made of."));
+    const host1 = el("div");
+    c1.append(host1);
+    c1.append(el("p", { class: "footnote", style: "margin:8px 0 0" },
+      `The cloud tracks the line at R² ${F.enh_r2.toFixed(2)} — the model misses by ` +
+      `${F.mean_pts_err} points per club over a whole season, no worse than it did on the ` +
+      "seasons it was trained on. Points per game rather than total points because these " +
+      "leagues play between 22 and 46 games."));
+    main.append(c1);
+    expectedVsActual(host1, F.scatter);
   }
-  main.append(cc);
+
+  // The chart's own footnote carries R² and the average miss, so the tiles keep
+  // only the fact it cannot show: this is the minutes-weighted model, and the
+  // margin it holds over raw squad value survived the new year too.
+  main.append(el("div", { class: "stat-row" },
+    statTile("Still beats raw squad value", `+${F.rmse_edge.toFixed(3)} PPG`,
+      "the same margin it showed on the original cross-validation")));
+
+  if (F.q2 && F.q2.length) {
+    const fit = F.q2_fit;
+    const c2 = el("div", { class: "chart-card", style: "margin-top:16px" },
+      el("div", { class: "chart-title" },
+        "Grade going in, against what actually happened"),
+      el("div", { class: "chart-sub" },
+        `The other half of the test, and the whole of it in one frame. Each dot is a ` +
+        `${F.season} spell taken by a coach who already had a grade (${fit.n} of ` +
+        `${F.n_stints}): where he stood on the model's estimate of him beforehand, ` +
+        "against how far his team went on to beat what its squad was worth. Nothing " +
+        "about the new season went into the grades."));
+    const host2 = el("div");
+    c2.append(host2);
+    // The scatter is deliberately unflattering: the relationship is real but small,
+    // and saying so here is what keeps the trend line from overselling it.
+    c2.append(el("p", { class: "footnote", style: "margin:8px 0 0" },
+      "The cloud is wide — one part-season is a noisy measure of a coach, so single dots " +
+      `mean little and the correlation is only ${fit.r.toFixed(2)}. The claim is the ` +
+      `tilt: the line rises across the range (${pfmt(fit.p)}), and the three group ` +
+      "averages, each about thirty times more precise than any dot in it, rise with it. " +
+      "Coaches with no prior record are not plotted; they are in the headline test, " +
+      `scored at the model's average, which is where its ${pfmt(F.q2_p)} comes from.`));
+    main.append(c2);
+    gradeVsOutcome(host2, F.q2, fit, F.bins);
+  }
 
   // ---- event study detail (test 2 above) ----
   main.append(el("h2", {}, "Inside test 2: what the manager changes also show"));
@@ -236,13 +270,3 @@ function valCard(c) {
       el("a", { href: c.link[0] }, c.link[1], " →")));
 }
 
-function overCard(title, items, cls) {
-  const card = el("div", { class: "card" }, el("h3", { style: "margin-top:0" }, title));
-  for (const x of items) {
-    card.append(el("div", { style: "display:flex; gap:8px; padding:3px 0; align-items:baseline" },
-      el("span", { style: "flex:1" }, el("strong", {}, x.team),
-        el("span", { class: "muted" }, ` · ${x.pts} pts, exp. ${x.xpts}`)),
-      el("span", { class: cls }, `${fmtSigned(x.over, 0)}`)));
-  }
-  return card;
-}

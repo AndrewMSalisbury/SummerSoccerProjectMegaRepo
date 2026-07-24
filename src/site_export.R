@@ -1317,16 +1317,76 @@ se_export_validation <- function() {
                           sd(ft$stints$prior_blup, na.rm = TRUE) * 38, 1)
   )
   dt <- ft$deserved_2025
-  fwd_over <- dt |> arrange(desc(over_points)) |> head(8) |>
-    transmute(team = team_name, league, pts = total_points,
-              xpts = se_num(expected_points, 0), over = se_num(over_points, 0))
-  fwd_under <- dt |> arrange(over_points) |> head(8) |>
-    transmute(team = team_name, league, pts = total_points,
-              xpts = se_num(expected_points, 0), over = se_num(over_points, 0))
-  fwd_coaches <- ft$stints |> filter(n_games >= 20) |> arrange(desc(partial_residual_ppg)) |>
-    head(8) |> transmute(coach = coach_name, team = team_name, league,
-                         resid = se_num(partial_residual_ppg, 2))
   tolist <- function(df) lapply(seq_len(nrow(df)), function(i) as.list(df[i, ]))
+  # NB: the "who over/underperformed most in 2025/26" leaderboards (teams and
+  # coaches) were deliberately dropped from this page on 2026-07-23 — they are
+  # descriptive colour, and the page's job is evidence that the model works. The
+  # same material lives on the league pages (deserved table) and coach pages.
+
+  # Q1 as a picture: every holdout club, expected vs actual. PPG (not total
+  # points) is the only comparable axis — the 14 leagues play 22 to 46 games.
+  # `label` marks the handful the chart direct-labels: the biggest miss in each
+  # direction among leagues a reader recognizes (a 22-game Danish swing is not
+  # more remarkable, just noisier).
+  big_lg <- c("premier-league", "championship", "laliga", "serie-a", "bundesliga",
+              "ligue-1", "eredivisie", "liga-portugal")
+  named <- dt |> filter(league %in% big_lg) |>
+    (\(d) c(head(arrange(d, desc(over_points))$team_season_id, 3),
+            head(arrange(d, over_points)$team_season_id, 3)))()
+  fwd_scatter <- dt |>
+    transmute(team = team_name, league,
+              act = se_num(points_per_game, 3), exp = se_num(predicted_ppg, 3),
+              pts = total_points, xpts = se_num(expected_points, 0),
+              over = se_num(over_points, 0),
+              label = team_season_id %in% named)
+
+  # Q2 as a picture: grade going in against what actually happened, one point per
+  # coach stint. Only the 219 stints whose coach already had a grade are plotted —
+  # the other 216 are first-timers scored at the model's average and would pile
+  # into a meaningless vertical stripe at x = 0 — so the line drawn here is the
+  # graded-only fit and the chart quotes ITS p, not the headline (which includes
+  # them). Games-weighted, matching the regression: a 6-game caretaker residual is
+  # enormously noisier than a full season's and must not be read as an equal point.
+  gst <- ft$stints |> filter(has_prior)
+  q2fit <- lm(partial_residual_ppg ~ prior_blup, data = gst, weights = n_games)
+  fwd_q2_fit <- list(
+    slope = se_num(coef(q2fit)[2], 3), intercept = se_num(coef(q2fit)[1], 4),
+    p = signif(coef(summary(q2fit))["prior_blup", 4], 2),
+    x0 = se_num(min(gst$prior_blup), 4), x1 = se_num(max(gst$prior_blup), 4),
+    n = nrow(gst), r = se_num(cor(gst$prior_blup, gst$partial_residual_ppg), 3))
+
+  # Tertiles, NOT quartiles: with 219 stints the quartile Q3/Q4 difference (0.117
+  # vs 0.060) sits inside its own SEs and would read as a real dip. These ride on
+  # the scatter as the signal the eye cannot average out of an r = 0.17 cloud.
+  brk <- quantile(gst$prior_blup, 0:3 / 3)
+  gst$bin <- cut(gst$prior_blup, breaks = brk, include.lowest = TRUE, labels = FALSE)
+  fwd_bins <- gst |> group_by(bin) |>
+    summarize(n = n(), games = sum(n_games),
+              x = sum(n_games * prior_blup) / sum(n_games),
+              mean = sum(n_games * partial_residual_ppg) / sum(n_games),
+              se = sqrt(sum(n_games^2 *
+                    (partial_residual_ppg -
+                       sum(n_games * partial_residual_ppg) / sum(n_games))^2)) / sum(n_games),
+              .groups = "drop") |>
+    mutate(label = c("Bottom third", "Middle third", "Top third")[bin],
+           x = se_num(x, 4), mean = se_num(mean, 3), se = se_num(se, 3)) |>
+    select(label, n, games, x, mean, se)
+
+  # Direct-label the stints a reader will recognize and can check: the best-graded
+  # coaches in the sample plus the biggest disappointments among them. A 4-game
+  # stint's residual is noise, so the label pool requires a real sample.
+  # (key on coach + team-season: a team-season split between two managers carries
+  # the same team_season_id on both stints)
+  gst <- gst |> mutate(.key = paste(coach_id, team_season_id))
+  lab_pool <- gst |> filter(n_games >= 15)
+  q2_named <- unique(c(
+    head(arrange(lab_pool, desc(prior_blup))$.key, 4),
+    head(arrange(lab_pool, partial_residual_ppg)$.key, 2),
+    head(arrange(lab_pool, desc(partial_residual_ppg))$.key, 2)))
+  fwd_q2 <- gst |>
+    transmute(coach = coach_name, team = team_name,
+              blup = se_num(prior_blup, 4), resid = se_num(partial_residual_ppg, 3),
+              games = n_games, label = .key %in% q2_named)
 
   # event study -------------------------------------------------------------------
   ev <- es$events
@@ -1376,8 +1436,8 @@ se_export_validation <- function() {
   }
 
   out <- list(
-    forward = c(fwd, list(over = tolist(fwd_over), under = tolist(fwd_under),
-                          coaches = tolist(fwd_coaches))),
+    forward = c(fwd, list(scatter = tolist(fwd_scatter), bins = tolist(fwd_bins),
+                          q2 = tolist(fwd_q2), q2_fit = fwd_q2_fit)),
     event   = c(evt, list(harsh_examples = tolist(harsh_ex))),
     payoff  = payoff,
     recommender_p = if (is.null(payoff)) 0.016 else payoff$p

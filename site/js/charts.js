@@ -754,3 +754,295 @@ export function growthCurves(host, series, opts = {}) {
     setHighlight(k) { highlight = k || null; render(); },
   };
 }
+
+// ---------- forward test: expected vs actual on the holdout season ----------
+
+// The Q1 picture: one dot per club in a season the frozen model had never seen,
+// its expectation against what it actually did. The 45-degree line is "perfect
+// forecast", so the cloud hugging it IS the result, and vertical distance from
+// it is the over/under-performance the rest of the page talks about.
+//
+// Axis is points per game, not total points: the 14 leagues play 22 to 46 games,
+// so totals are not comparable and a 22-game league would sit in its own corner.
+// Dots carry the site's diverging pair because the sign of that distance is the
+// quantity of interest — a polarity encoding, not a ramp on the plotted value.
+export function expectedVsActual(host, rows, opts = {}) {
+  const tt = tooltip();
+  const pts = rows.filter(r => r.act != null && r.exp != null);
+
+  function render() {
+    if (!pts.length) { clear(host).append(el("p", { class: "muted" }, "No data.")); return; }
+    const W = measuredWidth(host);
+    const H = Math.max(320, Math.min(460, W * 0.62));
+    const m = { top: 14, right: 16, bottom: 48, left: 48 };
+
+    const all = pts.flatMap(r => [r.act, r.exp]);
+    const lo = Math.floor(Math.min(...all) * 4) / 4 - 0.1;
+    const hi = Math.ceil(Math.max(...all) * 4) / 4 + 0.1;
+    // One shared domain on both axes: the diagonal only means "y = x" if the
+    // scales match, and squashing one axis would fake a tighter fit.
+    const x = scaleLinear([lo, hi], [m.left, W - m.right]);
+    const y = scaleLinear([lo, hi], [H - m.bottom, m.top]);
+    const svg = chartSvg(W, H);
+
+    yAxis(svg, y, m.left, W - m.right, v => v.toFixed(1), 5);
+    for (const t of x.ticks(5)) {
+      svg.append(svgEl("text", { x: x(t), y: H - m.bottom + 18, "text-anchor": "middle",
+        "font-size": 11, fill: MUTED }, t.toFixed(1)));
+    }
+    const midY = (m.top + H - m.bottom) / 2;
+    svg.append(
+      svgEl("text", { x: (m.left + W - m.right) / 2, y: H - 8, "text-anchor": "middle",
+        "font-size": 11, fill: MUTED }, "Expected points per game (model frozen at 2024)"),
+      svgEl("text", { x: 13, y: midY, "font-size": 11, fill: MUTED,
+        "text-anchor": "middle", transform: `rotate(-90 13 ${midY})` },
+        "Actual points per game"));
+
+    // The y = x reference is drawn heavier than the gridlines it sits among,
+    // because it is the comparison the chart exists to make.
+    svg.append(
+      svgEl("line", { x1: x(lo), y1: y(lo), x2: x(hi), y2: y(hi),
+        stroke: BASE, "stroke-width": 1.5 }),
+      svgEl("text", { x: x(hi) - 6, y: y(hi) + 16, "text-anchor": "end",
+        "font-size": 10.5, fill: MUTED }, "perfect forecast"));
+
+    for (const r of pts) {
+      svg.append(svgEl("circle", { cx: x(r.exp), cy: y(r.act), r: 4.5,
+        fill: r.over >= 0 ? POS : NEG, "fill-opacity": 0.8,
+        stroke: SURF, "stroke-width": 1.5 }));
+    }
+
+    // Direct-label the flagged extremes only, and only where the text fits and
+    // does not land on one already placed. Each label gets a hairline leader back
+    // to its dot: in a 252-point cloud a floating name is ambiguous about which
+    // dot it belongs to, which is worse than no label.
+    // On a phone six names crowd the cloud they are meant to explain, so the set
+    // thins to the single biggest miss in each direction; the rest stay on hover.
+    let marked = pts.filter(p => p.label);
+    if (W < 560) {
+      const best = s => marked.filter(r => Math.sign(r.over) === s)
+        .sort((a, b) => Math.abs(b.over) - Math.abs(a.over))[0];
+      marked = [best(1), best(-1)].filter(Boolean);
+    }
+
+    const placed = [];
+    for (const r of marked) {
+      const up = r.over >= 0;
+      const cx = x(r.exp), cy = y(r.act);
+      const tx = cx + 12, ty = cy + (up ? -13 : 19);
+      const w = r.team.length * 5.6;
+      if (tx + w > W - m.right || ty < m.top + 10 || ty > H - m.bottom - 4) continue;
+      if (placed.some(p => Math.abs(p.x - tx) < w && Math.abs(p.y - ty) < 13)) continue;
+      placed.push({ x: tx, y: ty });
+      svg.append(
+        svgEl("path", { d: `M${cx},${cy} L${tx - 4},${ty + (up ? 3 : -4)}`, fill: "none",
+          stroke: MUTED, "stroke-width": 1, opacity: 0.55 }),
+        // redraw the dot over its own leader, a touch larger, so the labelled
+        // clubs read as the marked ones
+        svgEl("circle", { cx, cy, r: 5.5, fill: r.over >= 0 ? POS : NEG,
+          stroke: SURF, "stroke-width": 1.5 }),
+        svgEl("text", { x: tx, y: ty, "font-size": 11, fill: INK2,
+          stroke: SURF, "stroke-width": 3, "paint-order": "stroke" }, r.team));
+    }
+
+    // Hit targets are 11px — comfortably larger than the 9px marks.
+    for (const r of pts) {
+      const hit = svgEl("circle", { cx: x(r.exp), cy: y(r.act), r: 11,
+        fill: "transparent" });
+      hit.addEventListener("pointermove", e => tt.show(e, r.team, [
+        { label: "vs expectation", value: `${fmtSigned(r.over, 0)} pts`,
+          color: r.over >= 0 ? "#2a78d6" : "#e34948" },
+        { label: "Points", value: fmtPoints(r.pts) },
+        { label: "Expected", value: fmtPoints(r.xpts) },
+      ]));
+      hit.addEventListener("pointerleave", () => tt.hide());
+      svg.append(hit);
+    }
+
+    if (opts.caption) {
+      svg.append(svgEl("text", { x: m.left + 8, y: m.top + 12, "font-size": 11,
+        fill: MUTED }, opts.caption));
+    }
+    clear(host).append(svg);
+  }
+  render();
+  onResize(host, render);
+}
+
+// ---------- forward test: coach grade vs what actually happened ----------
+
+// The Q2 picture, and the most direct one available: one dot per coach stint,
+// his grade going into the season against how far his team then beat its squad's
+// expectation. The fitted line IS the test.
+//
+// Three things share the frame because none of them is honest alone:
+//   - the raw stints, because that is the evidence;
+//   - dot area by games played, because a 6-game caretaker residual is enormously
+//     noisier than a full season's and the regression weights it accordingly —
+//     equal dots would invite the eye to read the noisiest points hardest;
+//   - the tertile means, because at r = 0.17 no reader can average a 219-point
+//     cloud by eye, and without them a validated result looks like a null.
+// The line and the group means are summaries of the same series, so only the
+// group markers take a second hue; the trend line is drawn as chrome.
+export function gradeVsOutcome(host, pts, fit, bins, opts = {}) {
+  const tt = tooltip();
+  const BIN = "var(--series-3)";
+
+  function render() {
+    if (!pts.length) { clear(host).append(el("p", { class: "muted" }, "No data.")); return; }
+    const W = measuredWidth(host);
+    const H = Math.max(340, Math.min(440, W * 0.52));
+    const narrow = W < 560;
+    // bottom band carries ticks, the axis title and the legend row
+    const m = { top: 16, right: 18, bottom: narrow ? 92 : 74, left: 54 };
+    const svg = chartSvg(W, H);
+
+    const xs = pts.map(p => p.blup), ys = pts.map(p => p.resid);
+    const xPad = (Math.max(...xs) - Math.min(...xs)) * 0.06;
+    const x = scaleLinear([Math.min(...xs) - xPad, Math.max(...xs) + xPad],
+                          [m.left, W - m.right]);
+    // symmetric about zero: "beat expectation" and "fell short" are the same
+    // quantity in two directions and must not be given different amounts of room
+    const yExt = Math.max(...ys.map(Math.abs)) * 1.06;
+    const y = scaleLinear([-yExt, yExt], [H - m.bottom, m.top]);
+
+    yAxis(svg, y, m.left, W - m.right, v => fmtSigned(v, 1), 5);
+    for (const t of x.ticks(narrow ? 4 : 6)) {
+      svg.append(svgEl("text", { x: x(t), y: H - m.bottom + 18, "text-anchor": "middle",
+        "font-size": 11, fill: MUTED }, fmtSigned(t, 2)));
+    }
+
+    // the two zero lines are the reference the whole chart is read against:
+    // y = 0 is "did exactly what the squad was worth", x = 0 is "average coach"
+    svg.append(
+      svgEl("line", { x1: m.left, x2: W - m.right, y1: y(0), y2: y(0),
+        stroke: BASE, "stroke-width": 1.5 }),
+      svgEl("line", { x1: x(0), x2: x(0), y1: m.top, y2: H - m.bottom,
+        stroke: BASE, "stroke-width": 1, opacity: 0.7 }),
+      svgEl("text", { x: x(0) + 5, y: m.top + 11, "font-size": 10.5, fill: MUTED },
+        "average coach"));
+
+    const maxG = Math.max(...pts.map(p => p.games));
+    const rOf = g => 3 + 5 * Math.sqrt(g / maxG);
+
+    for (const p of pts) {
+      svg.append(svgEl("circle", { cx: x(p.blup), cy: y(p.resid), r: rOf(p.games),
+        fill: S1, "fill-opacity": 0.4, stroke: S1, "stroke-opacity": 0.55,
+        "stroke-width": 1 }));
+    }
+
+    // the fitted (games-weighted) line, over the range actually plotted
+    if (fit) {
+      const yAt = v => fit.intercept + fit.slope * v;
+      svg.append(svgEl("line", { x1: x(fit.x0), y1: y(yAt(fit.x0)),
+        x2: x(fit.x1), y2: y(yAt(fit.x1)), stroke: INK2, "stroke-width": 2,
+        "stroke-linecap": "round" }));
+    }
+
+    // Group means, on top of everything. No error bars: the SEs are ~0.03 PPG
+    // against a +/-1.9 axis, so a whisker would be a 2px stub the legend promised
+    // and the eye could not find. That the averages are ~30x tighter than the
+    // cloud is the point, and the footnote says it in words instead.
+    for (const b of bins || []) {
+      const cx = x(b.x);
+      svg.append(
+        svgEl("circle", { cx, cy: y(b.mean), r: 6, fill: BIN, stroke: SURF,
+          "stroke-width": 2 }));
+      const hit = svgEl("circle", { cx, cy: y(b.mean), r: 14, fill: "transparent" });
+      hit.addEventListener("pointermove", e => tt.show(e, b.label, [
+        { label: "Average outcome", value: `${fmtSigned(b.mean, 3)} PPG`, color: "#eb6834" },
+        { label: "Standard error", value: `±${b.se.toFixed(3)}` },
+        { label: "Coach stints", value: String(b.n) },
+        { label: "Games", value: String(b.games) },
+      ]));
+      hit.addEventListener("pointerleave", () => tt.hide());
+      svg.append(hit);
+    }
+
+    // Direct labels on the flagged stints, each with a hairline leader — in a
+    // 219-point cloud a floating name does not say which dot it belongs to.
+    const placed = [];
+    let marked = pts.filter(p => p.label);
+    if (narrow) {
+      // On a phone, two labels chosen for separation rather than the first few in
+      // the list: the best-graded coach (far right) and the season's biggest
+      // overperformer (top). Anything mid-cloud lands unreadably on its neighbours.
+      const top = (key) => marked.reduce((a, b) => (b[key] > a[key] ? b : a));
+      marked = [...new Set([top("blup"), top("resid")])];
+    }
+    for (const p of marked) {
+      const up = p.resid >= 0;
+      const cx = x(p.blup), cy = y(p.resid), rr = rOf(p.games);
+      let tx = cx + rr + 7;
+      const w = p.coach.length * 5.6;
+      if (tx + w > W - m.right) tx = cx - rr - 7 - w;      // flip left near the edge
+      if (tx < m.left) continue;
+      // preferred side first, then the other one — coaches with near-identical
+      // grades (Conte and Allegri) stack vertically and would otherwise collide
+      const fits = ty => ty >= m.top + 12 && ty <= H - m.bottom - 4 &&
+        !placed.some(q => Math.abs(q.x - tx) < w && Math.abs(q.y - ty) < 16);
+      const ty = [cy + (up ? -10 : 16), cy + (up ? 16 : -10)].find(fits);
+      if (ty == null) continue;
+      placed.push({ x: tx, y: ty });
+      const anchor = tx > cx ? tx - 4 : tx + w + 4;
+      svg.append(
+        // leader meets the text on whichever side the label actually landed
+        svgEl("path", { d: `M${cx},${cy} L${anchor},${ty + (ty < cy ? 3 : -4)}`, fill: "none",
+          stroke: MUTED, "stroke-width": 1, opacity: 0.55 }),
+        svgEl("circle", { cx, cy, r: rr, fill: S1, stroke: SURF, "stroke-width": 1.5 }),
+        // a surface halo keeps the name legible where it crosses a mark
+        svgEl("text", { x: tx, y: ty, "font-size": 11, fill: INK2,
+          stroke: SURF, "stroke-width": 3, "paint-order": "stroke" }, p.coach));
+    }
+
+    // hit targets never smaller than 11px, so the 3px caretaker dots stay reachable
+    for (const p of pts) {
+      const hit = svgEl("circle", { cx: x(p.blup), cy: y(p.resid),
+        r: Math.max(11, rOf(p.games)), fill: "transparent" });
+      hit.addEventListener("pointermove", e => tt.show(e, p.coach, [
+        { label: "Grade going in", value: `${fmtSigned(p.blup * 38, 1)} pts/season`,
+          color: "#2a78d6" },
+        { label: `${p.team}, this season`, value: `${fmtSigned(p.resid, 2)} PPG` },
+        { label: "Games in charge", value: String(p.games) },
+      ]));
+      hit.addEventListener("pointerleave", () => tt.hide());
+      svg.append(hit);
+    }
+
+    svg.append(svgEl("text", { x: (m.left + W - m.right) / 2, y: H - m.bottom + 38,
+      "text-anchor": "middle", "font-size": 11, fill: MUTED },
+      opts.xLabel || (narrow ? "Coach's grade going in (PPG)"
+        : "Coach's grade going into the season (points per game above expectation)")));
+
+    // legend: identity is never colour-alone, so each key names its mark
+    const legend = [
+      { c: S1, t: narrow ? "One stint (size = games)" : "One coach stint — size is games in charge" },
+      { c: BIN, t: "Average of a third of them" },
+      { c: INK2, t: "Fitted trend", line: true },
+    ];
+    let lx = m.left, ly = H - m.bottom + (narrow ? 56 : 58);
+    for (const k of legend) {
+      if (narrow && lx > m.left && lx + k.t.length * 5.6 + 18 > W - m.right) {
+        lx = m.left; ly += 16;
+      }
+      if (k.line) {
+        svg.append(svgEl("line", { x1: lx, x2: lx + 12, y1: ly - 4, y2: ly - 4,
+          stroke: k.c, "stroke-width": 2 }));
+      } else {
+        svg.append(svgEl("circle", { cx: lx + 6, cy: ly - 4, r: 5, fill: k.c,
+          "fill-opacity": k.c === S1 ? 0.5 : 1, stroke: k.c, "stroke-width": 1 }));
+      }
+      svg.append(svgEl("text", { x: lx + 18, y: ly, "font-size": 11, fill: MUTED }, k.t));
+      lx += 18 + k.t.length * 5.6 + 20;
+    }
+
+    const midY = (m.top + H - m.bottom) / 2;
+    svg.append(svgEl("text", { x: 13, y: midY, "font-size": 11, fill: MUTED,
+      "text-anchor": "middle", transform: `rotate(-90 13 ${midY})` },
+      opts.yLabel || "Points per game above expectation"));
+
+    clear(host).append(svg);
+  }
+  render();
+  onResize(host, render);
+}
