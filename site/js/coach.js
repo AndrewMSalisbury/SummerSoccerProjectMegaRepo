@@ -71,7 +71,7 @@ function renderStrengths(c) {
     "difference tracks points closely but not perfectly (r = 0.86 across " +
     "team-seasons), so the split characterises an edge without fully explaining " +
     "it: a coach can grade well on points with little goal-difference edge. See ",
-    el("a", { href: "writeup.html" }, "how it works"), "."));
+    el("a", { href: "writeup.html#step-3-the-residual" }, "how it works"), "."));
   return card;
 }
 
@@ -138,7 +138,8 @@ function renderStyle(c) {
     "the squad's player-type mix alone accounts for 69% of possession. Only " +
     "lineup stability and pressing intensity are more his than the club's. " +
     "Descriptive only — none of these axes predicts coaching quality once club " +
-    "size is accounted for. See ", el("a", { href: "writeup.html" }, "how it works"), "."));
+    "size is accounted for. See ",
+    el("a", { href: "writeup.html#coach-page" }, "how it works"), "."));
   return card;
 }
 
@@ -245,13 +246,19 @@ function renderHeader(c) {
     `${c.career.n_clubs === 1 ? "club" : "clubs"} · ${c.career.total_games} games · ` +
     seasonSpan(c.career.first_season, c.career.last_season);
 
-  head.append(
-    photo,
-    el("div", { class: "entity-main" },
-      el("h1", {}, c.name),
-      el("p", { class: "subtitle", style: "margin-bottom:4px" }, career),
-      el("p", { class: "subtitle" }, c.career.leagues.join(" · "))),
-    renderGradeCard(c.rating));
+  const main = el("div", { class: "entity-main" },
+    el("h1", {}, c.name),
+    el("p", { class: "subtitle", style: "margin-bottom:4px" }, career),
+    el("p", { class: "subtitle" }, c.career.leagues.join(" · ")));
+
+  // only graded coaches can be compared — the page has nothing to put opposite
+  // an ungraded record (no BLUP, no interval, no attack/defence split)
+  if (c.rating) {
+    main.append(el("a", { class: "compare-link", href: `compare.html?a=${c.id}` },
+      "Compare with another coach →"));
+  }
+
+  head.append(photo, main, renderGradeCard(c.rating));
   return head;
 }
 
@@ -402,6 +409,6 @@ function renderFit(c) {
   card.append(el("p", { class: "footnote" },
     "Descriptive finding: with 4–10 stints per coach, no individual coach × " +
     "player-type test survives multiple-testing correction. See ",
-    el("a", { href: "writeup.html" }, "how it works"), "."));
+    el("a", { href: "writeup.html#coach-page" }, "how it works"), "."));
   return card;
 }

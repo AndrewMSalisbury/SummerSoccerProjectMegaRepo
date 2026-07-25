@@ -4,18 +4,42 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How it works — Football Coach Valuation</title>
+<link rel="icon" href="img/logo.svg">
 <link rel="stylesheet" href="css/site.css">
 <script src="js/theme.js"></script>
 </head>
 <body>
 <div id="site-header"></div>
 <div class="writeup-layout container">
-<nav class="toc" aria-label="Table of contents"><h3>Contents</h3><ul><li><a href="#the-short-version">The short version</a></li>
-<li><a href="#the-model-step-by-step">The model, step by step</a></li>
-<li><a href="#the-words-the-site-uses">The words the site uses</a></li>
-<li><a href="#the-site-page-by-page">The site, page by page</a></li>
-<li><a href="#how-much-to-trust-each-number">How much to trust each number</a></li>
-<li><a href="#what-the-model-does-not-do">What the model does not do</a></li></ul></nav>
+<nav class="toc" aria-label="Table of contents"><h3>Contents</h3><ul><li><a href="#the-short-version">The short version</a>
+</li>
+<li><a href="#the-model-step-by-step">The model, step by step</a>
+<ul>
+<li><a href="#step-1-what-is-a-squad-worth">Step 1 — What is a squad worth?</a></li>
+<li><a href="#step-2-what-should-this-team-have-scored">Step 2 — What should this team have scored?</a></li>
+<li><a href="#step-3-the-residual">Step 3 — The residual</a></li>
+<li><a href="#step-4-from-residuals-to-a-coach-number">Step 4 — From residuals to a coach number</a></li>
+<li><a href="#step-5-grades">Step 5 — Grades</a></li>
+<li><a href="#the-two-cuts">The two cuts</a></li>
+</ul>
+</li>
+<li><a href="#the-words-the-site-uses">The words the site uses</a>
+</li>
+<li><a href="#the-site-page-by-page">The site, page by page</a>
+<ul>
+<li><a href="#home-the-leaderboard">Home — the leaderboard</a></li>
+<li><a href="#coach-page">Coach page</a></li>
+<li><a href="#team-page">Team page</a></li>
+<li><a href="#league-page">League page</a></li>
+<li><a href="#player-growth">Player growth</a></li>
+<li><a href="#team-builder">Team builder</a></li>
+<li><a href="#does-it-work">Does it work?</a></li>
+</ul>
+</li>
+<li><a href="#how-much-to-trust-each-number">How much to trust each number</a>
+</li>
+<li><a href="#what-the-model-does-not-do">What the model does not do</a>
+</li></ul></nav>
 <article class="writeup">
 <h1>How It Works</h1>
 <p><em>A plain-language explanation of what this project measures and what each page of the
@@ -40,7 +64,7 @@ careers and every club they worked at.</li>
 a test of whether that number is real.</p>
 <hr />
 <h2 id="the-model-step-by-step">The model, step by step</h2>
-<h3>Step 1 — What is a squad worth?</h3>
+<h3 id="step-1-what-is-a-squad-worth">Step 1 — What is a squad worth?</h3>
 <p>Every player on Transfermarkt carries a market value in euros. Add them up and you
 have a squad value. But a €70m striker who tore his ACL in August did not help anyone,
 and the €4m academy graduate who played every minute did.</p>
@@ -51,7 +75,7 @@ value a team <em>put on the pitch</em>, not the value it owned.</p>
 predicts final points better than raw squad value, in 14 leagues over 20 seasons, and
 the margin survives every cross-validation test thrown at it. It is a small margin
 (about 0.014 points per game) but a consistent one.</p>
-<h3>Step 2 — What should this team have scored?</h3>
+<h3 id="step-2-what-should-this-team-have-scored">Step 2 — What should this team have scored?</h3>
 <p>A single model, fitted across all 14 leagues and 20 seasons, turns squad value into
 expected points per game. Two details matter:</p>
 <ul>
@@ -61,7 +85,7 @@ model looks at how far above or below the league's average a squad sits that yea
 <li><strong>Each league gets its own baseline.</strong> Some leagues are more predictable than others.</li>
 </ul>
 <p>Where you see <strong>&quot;expected points&quot;</strong> on the site, this is where it comes from.</p>
-<h3>Step 3 — The residual</h3>
+<h3 id="step-3-the-residual">Step 3 — The residual</h3>
 <p><strong>Residual = actual points − expected points.</strong> It is the single most important
 quantity on this site, and everything downstream is a way of slicing it.</p>
 <p>A residual of +0.20 PPG means a team beat its squad-value expectation by a fifth of a
@@ -70,7 +94,7 @@ typical season lands within about ±0.24 PPG of expectation.</p>
 <p>The residual is not &quot;the coach.&quot; It contains luck, injuries, referees, a hot goalkeeper,
 a favourable fixture list, and a hundred other things. The next step is what separates
 the coach's part from the noise.</p>
-<h3>Step 4 — From residuals to a coach number</h3>
+<h3 id="step-4-from-residuals-to-a-coach-number">Step 4 — From residuals to a coach number</h3>
 <p>A single good season proves nothing. The trick is that most coaches appear <strong>many
 times</strong> — different seasons, different clubs, sometimes different leagues. If a coach's
 teams keep beating expectation after he changes squads, that is harder to explain as
@@ -89,7 +113,7 @@ labels <strong>BLUP</strong>, in points per game.</li>
 </ul>
 <p>The headline result of the project is that this coach term is real: performance above
 squad-value expectation follows the manager more than it stays at the club.</p>
-<h3>Step 5 — Grades</h3>
+<h3 id="step-5-grades">Step 5 — Grades</h3>
 <p>A BLUP of +0.043 PPG is not something anyone can read. So the graded coaches are placed
 on a bell curve: the average graded coach scores <strong>75</strong>, and each standard deviation is
 worth <strong>10 points</strong>, with ordinary letter cutoffs on top (A ≥ 93, B ≥ 83, C ≥ 73, and so
@@ -104,7 +128,7 @@ coach still appears on the site with his stints and residuals, but with no grade
 the data cannot tell his record apart from luck. Of 2,341 coaches in the dataset,
 <strong>545</strong> clear the bar in the all-leagues ranking and <strong>215</strong> in the top-5 ranking.</li>
 </ul>
-<h3>The two cuts</h3>
+<h3 id="the-two-cuts">The two cuts</h3>
 <p>Every grade on the site carries a label: <strong>&quot;Top-5 leagues&quot;</strong> or <strong>&quot;All leagues.&quot;</strong></p>
 <ul>
 <li><strong>Top-5 leagues</strong> grades a coach only on his work in the Premier League, La Liga,
@@ -170,14 +194,14 @@ grade and often no top-5 grade at all.</p>
 </table>
 <hr />
 <h2 id="the-site-page-by-page">The site, page by page</h2>
-<h3>Home — the leaderboard</h3>
+<h3 id="home-the-leaderboard">Home — the leaderboard</h3>
 <p>The front page is the ranking. Toggle between the two cuts; the table gives each coach's
 grade, score, BLUP, career stints, clubs, games, and mean residual. &quot;sig&quot; marks the rare
 coaches whose record is individually significant. The stat tiles above it are the size
 of the dataset: 14 leagues, 20 seasons, 5,087 team-seasons, 2,341 coaches.</p>
 <p>The league tiles at the bottom, the dropdown in the header, and the search box (coaches,
 teams, leagues) are the ways into everything else.</p>
-<h3>Coach page</h3>
+<h3 id="coach-page">Coach page</h3>
 <p>The deepest page on the site. In order:</p>
 <p><strong>Grade card.</strong> Letter, score out of 100, rank, BLUP, and the same coach's standing in
 the <em>other</em> cut underneath. Unranked coaches get an explicit &quot;record too thin to grade.&quot;</p>
@@ -208,7 +232,7 @@ seasons, plus a one-line read on how rigid or adaptable he is.</p>
 under-performance. Explicitly descriptive — with 4–10 stints per coach, no individual
 coach × player-type pattern survives proper multiple-testing correction, so only
 patterns that recur under two different specifications are shown at all.</p>
-<h3>Team page</h3>
+<h3 id="team-page">Team page</h3>
 <p><strong>Header.</strong> Mean residual, best season, toughest season.</p>
 <p><strong>Seasons: actual vs expected.</strong> A dumbbell per season — gray dot expected, coloured dot
 actual. Click a season to highlight its coaches in the table below.</p>
@@ -229,7 +253,7 @@ where it will cheerfully suggest hiring Guardiola, since contracts and wages are
 modelled.</p>
 <p><strong>Squad value over time.</strong> Total value in euros, and minutes-weighted strength relative
 to the league average that season.</p>
-<h3>League page</h3>
+<h3 id="league-page">League page</h3>
 <p>Pick a season. The <strong>standings</strong> carry the usual columns plus three of the project's own:</p>
 <ul>
 <li><strong>Expected</strong> — points the squad-value model predicted.</li>
@@ -246,7 +270,7 @@ under-performers and the most-used coaches.</p>
 <p>One honest caveat is printed on the page: extreme entries from pre-2010 seasons in
 smaller leagues can reflect patchy market-value coverage rather than genuine
 overperformance.</p>
-<h3>Player growth</h3>
+<h3 id="player-growth">Player growth</h3>
 <p>A different question, and the only page not about coaches.</p>
 <p>The model expects a player's market value to move along a trajectory set by his age,
 his current price, his position and his recent momentum. The <strong>chart at the top is that
@@ -259,7 +283,7 @@ position, league or era.</p>
 <p>The page states its own limit prominently: <strong>this describes players, not coaches.</strong> The
 project tested whether a coach's share of value growth repeats across his career. It
 does not, so no coaching credit is taken from this list.</p>
-<h3>Team builder</h3>
+<h3 id="team-builder">Team builder</h3>
 <p>Pick one of 22 real formations, click a slot, and choose from every big-5 player-season
 since 2015/16 — cross-era XIs allowed. The readout gives the XI's value, its value
 percentile, and its player-type mix. Fill all eleven and you get the same descriptive
@@ -267,7 +291,7 @@ coach-similarity grid the team pages show, computed live against your XI.</p>
 <p>Deliberately absent: any predicted points total for a fantasy XI. A 2016 Leicester
 midfield behind a 2024 Bayern attack is outside anything the model has evidence about,
 and inventing a number for it would be fiction.</p>
-<h3>Does it work?</h3>
+<h3 id="does-it-work">Does it work?</h3>
 <p>The page that justifies the rest. Any model can explain the past; the question is
 whether the coach grade predicts things it was never shown. Three tests, on three
 deliberately different designs, each vulnerable to something the other two are not:</p>

@@ -40,6 +40,8 @@ const state = {
   picks: [],
   bench: [],              // displaced picks: {pid, y}
   leagueContext: null,    // slug or null
+  benchReason: null,      // label above the bench strip
+  loaded: null,           // "Club · 2024/25" when started from a real squad
 };
 
 main().catch(e => showError(`Failed to load the team builder: ${e.message}`));
@@ -106,6 +108,15 @@ function filledCount() {
   return state.picks.filter(Boolean).length;
 }
 
+// the archetype mix is built from outfielders only, so that is what the
+// suggestions threshold counts
+const MIN_OUTFIELD_FOR_SUGGESTIONS = 7;
+
+function outfieldCount() {
+  const f = formationOf(state.formation);
+  return state.picks.filter((p, i) => p && f.slots[i].type !== "GK").length;
+}
+
 // share vector over the 10 outfield picks, equal-weighted (the builder analog
 // of the minutes-weighted stint shares the coach profiles are built from)
 function xiShares() {
@@ -169,35 +180,177 @@ function readHash() {
 
 // ---------- formation switching (keep picks where eligible) ----------
 
-function switchFormation(name) {
-  const oldPicks = state.picks.filter(Boolean).concat(state.bench);
-  state.formation = name;
-  const slots = formationOf(name).slots;
-  state.picks = slots.map(() => null);
-  state.bench = [];
+// Seat a set of picks into a formation's slots. Two priorities, because the
+// two callers are asking different questions:
+//  - switching formation KEEPS an XI the user already chose, so the best-fitting
+//    (pick, slot) pair wins each round — the GK reclaims the GK slot before a
+//    stretch fit can steal anything.
+//  - loading a real squad is CHOOSING an XI out of 14-28 players, so value leads
+//    and fit only breaks ties; a first pass at natural/capable fit (>= 0.5)
+//    stops an expensive forward occupying left-back while a real one sits out.
+// Returns {seated, bench} and mutates nothing.
+function assignToSlots(picks, slots, { byValue = false } = {}) {
+  const seated = slots.map(() => null);
+  const floor = state.meta.eligibility_floor;
+  const seasonFor = pick => {
+    const player = state.playersById.get(pick.pid);
+    return player ? player.seasons.find(s => s.y === pick.y) : null;
+  };
 
-  // greedy: repeatedly place the (pick, empty slot) pair with the highest
-  // eligibility, so e.g. the GK reclaims the GK slot before a stretch fit
-  // steals anything
-  const remaining = [...oldPicks];
+  if (byValue) {
+    const byVal = (a, b) => (seasonFor(b)?.v ?? -1) - (seasonFor(a)?.v ?? -1);
+    let remaining = [...picks].sort(byVal);
+    for (const threshold of [0.5, floor]) {
+      const left = [];
+      for (const pick of remaining) {          // most valuable first
+        const season = seasonFor(pick);
+        if (!season) continue;                 // stale pick: drop it
+        const player = state.playersById.get(pick.pid);
+        let best = null;
+        slots.forEach((slot, i) => {
+          if (seated[i]) return;
+          const e = eligibility(player, season, slot.type);
+          if (e >= threshold && (!best || e > best.e)) best = { i, e };
+        });
+        if (best) seated[best.i] = pick; else left.push(pick);
+      }
+      remaining = left;
+    }
+    return { seated, bench: remaining };
+  }
+
+  const remaining = [...picks];
   while (remaining.length) {
     let best = null;
     for (const pick of remaining) {
+      const season = seasonFor(pick);
+      if (!season) continue;
       const player = state.playersById.get(pick.pid);
-      const season = player.seasons.find(s => s.y === pick.y);
       slots.forEach((slot, i) => {
-        if (state.picks[i]) return;
+        if (seated[i]) return;
         const e = eligibility(player, season, slot.type);
-        if (e >= state.meta.eligibility_floor && (!best || e > best.e)) {
-          best = { pick, i, e };
-        }
+        if (e >= floor && (!best || e > best.e)) best = { pick, i, e };
       });
     }
     if (!best) break;
-    state.picks[best.i] = best.pick;
+    seated[best.i] = best.pick;
     remaining.splice(remaining.indexOf(best.pick), 1);
   }
-  state.bench = remaining;
+  return { seated, bench: remaining };
+}
+
+function switchFormation(name) {
+  const oldPicks = state.picks.filter(Boolean).concat(state.bench);
+  state.formation = name;
+  const { seated, bench } = assignToSlots(oldPicks, formationOf(name).slots);
+  state.picks = seated;
+  state.bench = bench;
+}
+
+// ---------- starting from a real squad ----------
+
+// Every club-season present in the player pool, newest first. Built once.
+let squadCache = null;
+function squadIndex() {
+  if (squadCache) return squadCache;
+  const m = new Map();
+  for (const p of state.players) {
+    // 83 of the 18,638 exported player-seasons repeat the same (player, club,
+    // season) row, so a squad would otherwise list a player twice
+    const seen = new Set();
+    for (const s of p.seasons) {
+      const key = `${s.club_id}|${s.y}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      let e = m.get(key);
+      if (!e) {
+        e = { key, club: s.club, clubId: s.club_id, y: s.y, lg: s.lg, players: [] };
+        m.set(key, e);
+      }
+      e.players.push({ pid: p.id, y: s.y });
+    }
+  }
+  squadCache = [...m.values()]
+    .sort((a, b) => b.y - a.y || a.club.localeCompare(b.club));
+  return squadCache;
+}
+
+// Seat a real squad into the current shape. The pool behind this page is the
+// players who actually played that season (a SofaScore archetype needs minutes,
+// keepers need 600+), so this is that squad's regulars — not the club's literal
+// team sheet, and the copy says so.
+function loadSquad(entry) {
+  const { seated, bench } = assignToSlots(
+    entry.players.map(x => ({ pid: x.pid, y: x.y })),
+    formationOf(state.formation).slots, { byValue: true });
+  state.picks = seated;
+  state.bench = bench;
+  state.benchReason = `Rest of the ${entry.club} ${fmtSeason(entry.y)} squad`;
+  state.loaded = `${entry.club} · ${fmtSeason(entry.y)}`;
+  // the club's own league is the sensible default context for the filter chips
+  state.leagueContext = entry.lg;
+  closePicker();
+  render();
+}
+
+function randomSquad() {
+  const all = squadIndex();
+  loadSquad(all[Math.floor(Math.random() * all.length)]);
+}
+
+function openSquadPicker() {
+  closePicker();
+  const all = squadIndex();
+  const input = el("input", { type: "search", autocomplete: "off",
+    placeholder: "Search clubs…", "aria-label": "Search clubs" });
+  const listHost = el("div", { class: "picker-list" });
+  const MAX_ROWS = 60;
+
+  function draw() {
+    clear(listHost);
+    const q = input.value.trim().toLowerCase();
+    const rows = q ? all.filter(e => e.club.toLowerCase().includes(q)) : all;
+    if (!rows.length) {
+      listHost.append(el("div", { class: "picker-empty" }, "No clubs match."));
+      return;
+    }
+    for (const e of rows.slice(0, MAX_ROWS)) {
+      listHost.append(el("div", { class: "picker-row",
+        onclick: () => loadSquad(e) },
+        crestImg(`assets/crests/${e.clubId}.png`, e.club, "picker-photo"),
+        el("div", { class: "picker-main" },
+          el("div", { class: "picker-name" }, e.club),
+          el("div", { class: "picker-sub" },
+            el("span", { class: "picker-arch" }, LEAGUE_NAMES[e.lg] ?? e.lg))),
+        el("div", { class: "picker-right" },
+          el("span", { class: "picker-value" }, fmtSeason(e.y)),
+          el("span", { class: "picker-nseasons" },
+            `${e.players.length} players`))));
+    }
+    if (rows.length > MAX_ROWS) {
+      listHost.append(el("div", { class: "picker-empty" },
+        `…and ${rows.length - MAX_ROWS} more — type a club name to narrow.`));
+    }
+  }
+  input.addEventListener("input", draw);
+
+  modalNode = el("div", { class: "builder-modal",
+    onclick: e => { if (e.target === modalNode) closePicker(); } },
+    el("div", { class: "modal-card", role: "dialog", "aria-modal": "true" },
+      el("div", { class: "modal-head" },
+        el("div", { class: "chart-title" }, "Start from a real squad"),
+        el("button", { class: "modal-close", type: "button",
+          onclick: closePicker }, "×")),
+      el("div", { class: "modal-search" }, input),
+      el("p", { class: "footnote", style: "margin:0 0 6px" },
+        `${all.length} club-seasons across the big five leagues, ` +
+        "2015/16–2024/25. The XI is that squad's most valuable players who fit " +
+        "your current shape; everyone else goes to the bench."),
+      listHost));
+  document.body.append(modalNode);
+  document.addEventListener("keydown", escClose);
+  draw();
+  input.focus();
 }
 
 // place a benched pick into the best empty eligible slot
@@ -229,12 +382,25 @@ function render() {
     el("p", { class: "subtitle" },
       "Build your own XI from every big-5 player-season since 2015/16, then " +
       "see which coaches thrived with squads shaped like yours. Click a " +
-      "circle to fill a position."));
+      "circle to fill a position — or start from a squad that really existed."),
+    startRow());
 
   const layout = el("div", { class: "builder-layout" },
     el("div", {}, pitchCard(), benchStrip()),
     el("div", {}, readoutCard(), formationCard()));
   main.append(layout, suggestionsCard());
+}
+
+// An empty pitch asking for eleven clicks before it does anything is the page's
+// worst moment; these two buttons make the first one produce a whole team.
+function startRow() {
+  return el("div", { class: "builder-start" },
+    el("button", { class: "builder-start-btn", type: "button",
+      onclick: openSquadPicker }, "Load a real squad"),
+    el("button", { class: "builder-reset", type: "button",
+      onclick: randomSquad }, "Surprise me"),
+    el("span", { class: "muted" },
+      "then swap anyone out — it stays your XI"));
 }
 
 function formationCard() {
@@ -271,9 +437,34 @@ function resetButton() {
     onclick: () => {
       state.picks = formationOf(state.formation).slots.map(() => null);
       state.bench = [];
+      state.benchReason = null;
+      state.loaded = null;
       render();
     },
   }, "Clear team");
+}
+
+// writeHash() has always round-tripped the whole XI through the URL; nothing
+// ever told anyone, so the button is the entire feature.
+function shareButton() {
+  const btn = el("button", { class: "builder-reset", type: "button" }, "Copy link");
+  btn.addEventListener("click", async () => {
+    const url = window.location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      btn.textContent = "Link copied";
+    } catch {
+      // clipboard blocked (insecure origin, permissions): select it instead so
+      // the reader can still copy by hand
+      const box = el("input", { class: "share-fallback", value: url,
+        readonly: "", "aria-label": "Shareable link" });
+      btn.replaceWith(box);
+      box.select();
+      return;
+    }
+    setTimeout(() => { btn.textContent = "Copy link"; }, 1800);
+  });
+  return btn;
 }
 
 // ---------- pitch ----------
@@ -390,7 +581,8 @@ function initialsFace(name, cls) {
 function benchStrip() {
   if (!state.bench.length) return null;
   const strip = el("div", { class: "builder-bench" },
-    el("span", { class: "muted" }, "Displaced by the formation change — click to re-place: "));
+    el("span", { class: "muted" },
+      `${state.benchReason || "Displaced by the formation change"} — click to place: `));
   for (const pick of state.bench) {
     const player = state.playersById.get(pick.pid);
     strip.append(el("button", {
@@ -418,8 +610,13 @@ function readoutCard() {
   const filled = filledCount();
   const card = el("div", { class: "chart-card builder-readout" },
     el("div", { class: "readout-head" },
-      el("div", { class: "chart-title" }, "Your team"),
-      resetButton()));
+      el("div", {},
+        el("div", { class: "chart-title" }, "Your team"),
+        state.loaded
+          ? el("div", { class: "muted", style: "font-size:12.5px" },
+              `Started from ${state.loaded}`)
+          : null),
+      el("div", { class: "readout-actions" }, shareButton(), resetButton())));
 
   card.append(el("div", { class: "readout-stats" },
     stat("Players", `${filled} / 11`),
@@ -657,10 +854,23 @@ function suggestionsCard() {
       "toward overall coach quality (descriptive: a judgment aid, not a " +
       "prediction)."));
 
-  if (filledCount() < 11) {
+  // xiShares() already normalises over whatever outfield picks exist, so a
+  // partial XI needs no different maths — only a warning that it will move.
+  // Below seven outfielders the mix is too thin for the shares to mean much.
+  const filled = filledCount();
+  const outfield = outfieldCount();
+  if (outfield < MIN_OUTFIELD_FOR_SUGGESTIONS) {
     card.append(el("p", { class: "footnote", style: "margin-top:4px" },
-      `Fill all 11 positions to see suggestions (${filledCount()}/11).`));
+      `Pick ${MIN_OUTFIELD_FOR_SUGGESTIONS} outfield players to see suggestions ` +
+      `(${outfield}/${MIN_OUTFIELD_FOR_SUGGESTIONS}) — or load a real squad above ` +
+      "to fill the whole XI at once."));
     return card;
+  }
+  if (filled < 11) {
+    card.append(el("p", { class: "builder-provisional" },
+      el("strong", {}, "Provisional — "),
+      `${filled} of 11 places filled. These are matched on the mix you have so ` +
+      "far, and will move as you fill the rest."));
   }
 
   const shares = xiShares();
@@ -694,7 +904,9 @@ function suggestionsCard() {
     country: { label: "This country", on: false, needsCtx: true,
                test: c => country && c.countries.includes(country) },
     big5:    { label: "Big-5 proven", on: false, test: c => c.big5 },
-    level:   { label: `Similar level (±${band})`, on: false,
+    // an incomplete XI is worth less than a full one, so its value percentile
+    // would quietly point this filter at the wrong tier of club
+    level:   { label: `Similar level (±${band})`, on: false, needsFull: true,
                test: c => c.club_level != null && level != null &&
                  Math.abs(c.club_level - level) <= band },
     active:  { label: "Recently active", on: false,
@@ -704,11 +916,15 @@ function suggestionsCard() {
   };
   const chipRow = el("div", { class: "chip-row" });
   for (const [, fdef] of Object.entries(filters)) {
-    const disabled = fdef.needsCtx && !ctx;
+    const disabled = (fdef.needsCtx && !ctx) || (fdef.needsFull && filled < 11);
     const chip = el("button", {
       class: "filter-chip" + (disabled ? " disabled" : ""),
       type: "button",
-      title: disabled ? "Pick a league context to use this filter" : null,
+      title: disabled
+        ? (fdef.needsFull && filled < 11
+            ? "Fill all 11 places — a partial XI has no meaningful value level"
+            : "Pick a league context to use this filter")
+        : null,
       onclick: () => {
         if (disabled) return;
         fdef.on = !fdef.on;

@@ -266,12 +266,21 @@ se_coach_summary <- function(name, rating, stints) {
 # (save_coach_grades() in coach_attribution.R) rather than inventing its own.
 se_coach_strengths <- function(d, coach_id, rating) {
   if (is.null(rating)) return(NULL)
-  tbl <- if (rating$cut == "top5") d$str5 else d$str14
+  se_coach_strengths_cut(d, coach_id, rating$cut)
+}
+
+# Same split for an explicitly named cut. The compare page needs both coaches on
+# ONE cut, and roughly half of all pairs mix a top-5-headline coach with a
+# 14-league-only one — so it reads the always-shared 14-league cut from
+# `strengths_all14` rather than two incomparable headline cuts. Coach pages are
+# unchanged: they still read `strengths`, i.e. the headline cut.
+se_coach_strengths_cut <- function(d, coach_id, cut) {
+  tbl <- if (cut == "top5") d$str5 else d$str14
   s <- tbl[tbl$coach_id == coach_id, ]
   if (nrow(s) != 1) return(NULL)
   list(
-    cut         = rating$cut,
-    cut_label   = rating$cut_label,
+    cut         = cut,
+    cut_label   = if (cut == "top5") "Top-5 leagues" else "All leagues",
     off         = se_num(s$off_blup),
     def         = se_num(s$def_blup),
     tilt        = se_num(s$tilt),
@@ -379,6 +388,10 @@ se_export_coaches <- function(d) {
       ),
       rating = rating,
       strengths = se_coach_strengths(d, coach_id, rating),
+      # always-14-league copy, so compare.html can put any two graded coaches on
+      # one cut (every top-5-graded coach is also 14-league-graded)
+      strengths_all14 = if (is.null(rating)) NULL
+                        else se_coach_strengths_cut(d, coach_id, "14league"),
       style = se_coach_style(d, coach_id),
       formations = se_coach_formations(d, coach_id),
       stints = lapply(seq_len(nrow(stints)), function(i) {
@@ -1165,21 +1178,57 @@ se_export_writeup <- function() {
   html <- commonmark::markdown_html(paste(md, collapse = "\n"),
                                     extensions = TRUE)
 
-  # add ids to h2 headings and build the TOC from them
-  heads <- regmatches(html, gregexpr("<h2>[^<]+</h2>", html))[[1]]
+  # Id every h2 AND h3 so site copy can deep-link a section rather than dumping
+  # the reader at the top of the document, and build a two-level TOC from them.
+  # Walking the matches in document order (rather than sub()-ing each heading's
+  # text) keeps repeated heading text unambiguous and lets each h3 nest inside
+  # the <li> of the h2 above it.
+  m       <- gregexpr("<h([23])>([^<]+)</h\\1>", html)[[1]]
+  starts  <- as.integer(m)
+  lens    <- attr(m, "match.length")
+  pieces    <- character(0)   # rebuilt html
   toc_items <- character(0)
-  for (h in heads) {
-    text <- gsub("</?h2>", "", h)
-    id <- se_slugify(text)
-    html <- sub(h, sprintf('<h2 id="%s">%s</h2>', id, text), html, fixed = TRUE)
-    toc_items <- c(toc_items,
-                   sprintf('<li><a href="#%s">%s</a></li>', id, text))
+  used      <- character(0)   # ids already issued, for collision suffixes
+  open_sub  <- FALSE          # a nested <ul> of h3s is open
+  n_head    <- 0L
+  pos       <- 1L
+
+  if (starts[1] > 0) for (i in seq_along(starts)) {
+    raw  <- substr(html, starts[i], starts[i] + lens[i] - 1L)
+    lvl  <- substr(raw, 3L, 3L)                 # "2" or "3"
+    text <- gsub("</?h[23]>", "", raw)
+
+    base <- se_slugify(text)
+    id <- base
+    k <- 2L
+    while (id %in% used) { id <- paste0(base, "-", k); k <- k + 1L }
+    used <- c(used, id)
+
+    pieces <- c(pieces, substr(html, pos, starts[i] - 1L),
+                sprintf('<h%s id="%s">%s</h%s>', lvl, id, text, lvl))
+    pos <- starts[i] + lens[i]
+
+    if (lvl == "2") {
+      if (open_sub) { toc_items <- c(toc_items, "</ul>"); open_sub <- FALSE }
+      if (n_head > 0L) toc_items <- c(toc_items, "</li>")
+      toc_items <- c(toc_items, sprintf('<li><a href="#%s">%s</a>', id, text))
+    } else {
+      if (!open_sub) { toc_items <- c(toc_items, "<ul>"); open_sub <- TRUE }
+      toc_items <- c(toc_items,
+                     sprintf('<li><a href="#%s">%s</a></li>', id, text))
+    }
+    n_head <- n_head + 1L
   }
+  if (open_sub) toc_items <- c(toc_items, "</ul>")
+  if (n_head > 0L) toc_items <- c(toc_items, "</li>")
+  pieces <- c(pieces, substr(html, pos, nchar(html)))
+  html <- paste(pieces, collapse = "")
 
   page <- paste0(
     '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n',
     '<meta name="viewport" content="width=device-width, initial-scale=1">\n',
     '<title>How it works — Football Coach Valuation</title>\n',
+    '<link rel="icon" href="img/logo.svg">\n',
     '<link rel="stylesheet" href="css/site.css">\n',
     '<script src="js/theme.js"></script>\n</head>\n<body>\n',
     '<div id="site-header"></div>\n',
@@ -1191,7 +1240,7 @@ se_export_writeup <- function() {
     '</body>\n</html>\n'
   )
   writeLines(page, file.path(se_site_dir, "writeup.html"), useBytes = TRUE)
-  cat("writeup.html generated (", length(heads), "TOC sections )\n")
+  cat("writeup.html generated (", n_head, "TOC sections )\n")
 }
 
 # --- player-development leaderboard (Part 12) --------------------------------------

@@ -87,8 +87,11 @@ export function careerChart(host, stints, opts = {}) {
 
   const vals = stints.flatMap(s => [s.actual_ppg, s.predicted_ppg])
     .filter(v => v != null);
-  const yDom = [Math.max(0, Math.floor(Math.min(...vals) * 4) / 4 - 0.25),
-                Math.ceil(Math.max(...vals) * 4) / 4 + 0.25];
+  // opts.yDomain lets a caller pin the axis across several charts (compare.html
+  // draws two careers side by side, where separate axes would fake a match)
+  const yDom = opts.yDomain || [
+    Math.max(0, Math.floor(Math.min(...vals) * 4) / 4 - 0.25),
+    Math.ceil(Math.max(...vals) * 4) / 4 + 0.25];
 
   function render() {
     const W = measuredWidth(host);
@@ -490,7 +493,10 @@ export function styleBars(host, axes) {
 // coaches. Position along a drawn pitch would claim a physical location the
 // data does not contain — 98th percentile is not "wins it 98% of the way
 // upfield". Keep the poles as labels and the scale as rank.
-export function spectrumBar(host, { pct, leftLabel, rightLabel, label }) {
+// `markers` ([{pct, color, name}]) draws several coaches on one scale for the
+// compare page; omitted, it draws the single `pct` in the site accent.
+export function spectrumBar(host, { pct, markers, leftLabel, rightLabel, label }) {
+  const marks = markers || [{ pct, color: S1 }];
   function render() {
     const W = measuredWidth(host);
     const H = 56;
@@ -514,13 +520,15 @@ export function spectrumBar(host, { pct, leftLabel, rightLabel, label }) {
       "dominant-baseline": "central", "font-size": 12, fill: MUTED }, rightLabel));
 
     // marker: 2px surface ring so it reads against the track at any position
-    svg.append(svgEl("circle", { cx: x(pct), cy: trackY + trackH / 2, r: 7,
-      fill: S1, stroke: SURF, "stroke-width": 2 }));
-    // keep the marker label inside the track's span at the poles
-    const anchor = pct <= 4 ? "start" : pct >= 96 ? "end" : "middle";
-    svg.append(svgEl("text", { x: x(pct), y: trackY + trackH + 18,
-      "text-anchor": anchor, "font-size": 11.5, fill: INK2 },
-      label ?? `${ordinal(pct)} percentile`));
+    for (const mk of marks) {
+      svg.append(svgEl("circle", { cx: x(mk.pct), cy: trackY + trackH / 2, r: 7,
+        fill: mk.color, stroke: SURF, "stroke-width": 2 }));
+      // keep the marker label inside the track's span at the poles
+      const anchor = mk.pct <= 4 ? "start" : mk.pct >= 96 ? "end" : "middle";
+      svg.append(svgEl("text", { x: x(mk.pct), y: trackY + trackH + 18,
+        "text-anchor": anchor, "font-size": 11.5, fill: INK2 },
+        mk.name ?? label ?? `${ordinal(mk.pct)} percentile`));
+    }
 
     clear(host).append(svg);
   }
@@ -1040,6 +1048,239 @@ export function gradeVsOutcome(host, pts, fit, bins, opts = {}) {
     svg.append(svgEl("text", { x: 13, y: midY, "font-size": 11, fill: MUTED,
       "text-anchor": "middle", transform: `rotate(-90 13 ${midY})` },
       opts.yLabel || "Points per game above expectation"));
+
+    clear(host).append(svg);
+  }
+  render();
+  onResize(host, render);
+}
+
+// ---------- two-coach comparison (compare.html) ----------
+
+// The compare page's two series always take the FRONT of CAT4 (blue, orange) —
+// the validated adjacent pair, not a fresh choice. Each column labels itself
+// with its hue, so these charts carry no separate legend.
+export const COMPARE_COLORS = [CAT4[0], CAT4[1]];
+
+// rows: [{name, blup, ci: [lo, hi] | null, color}]
+// Two grade estimates with their confidence intervals on one shared axis. The
+// page states in words whether the intervals overlap; this is what makes that
+// sentence checkable rather than asserted, so the intervals are the mark and
+// the point estimate rides on top of them.
+export function compareCI(host, rows) {
+  const tt = tooltip();
+  const bounds = rows.flatMap(r => (r.ci ? r.ci : [r.blup])).concat(0);
+  const lo = Math.min(...bounds), hi = Math.max(...bounds);
+  const pad = Math.max((hi - lo) * 0.12, 0.01);
+
+  function render() {
+    const W = measuredWidth(host);
+    const rowH = 46;
+    const m = { top: 12, right: 62, bottom: 30, left: 128 };
+    const H = m.top + rows.length * rowH + m.bottom;
+    const svg = chartSvg(W, H);
+    const x = scaleLinear([lo - pad, hi + pad], [m.left, W - m.right]);
+
+    // zero: "exactly what the squad was worth" — the reference both sit against
+    svg.append(svgEl("line", { x1: x(0), x2: x(0), y1: m.top,
+      y2: H - m.bottom, stroke: BASE, "stroke-width": 1 }));
+    svg.append(svgEl("text", { x: x(0), y: H - 10, "text-anchor": "middle",
+      "font-size": 11, fill: MUTED }, "squad-value expectation"));
+
+    rows.forEach((r, i) => {
+      const cy = m.top + i * rowH + rowH / 2;
+      if (r.ci) {
+        svg.append(svgEl("line", { x1: x(r.ci[0]), x2: x(r.ci[1]), y1: cy, y2: cy,
+          stroke: r.color, "stroke-width": 3, "stroke-linecap": "round",
+          "stroke-opacity": 0.35 }));
+        for (const b of r.ci) {
+          svg.append(svgEl("line", { x1: x(b), x2: x(b), y1: cy - 7, y2: cy + 7,
+            stroke: r.color, "stroke-width": 2, "stroke-opacity": 0.55 }));
+        }
+      }
+      svg.append(svgEl("circle", { cx: x(r.blup), cy, r: 6, fill: r.color,
+        stroke: SURF, "stroke-width": 2 }));
+
+      svg.append(svgEl("text", { x: m.left - 14, y: cy, "text-anchor": "end",
+        "dominant-baseline": "central", "font-size": 12.5, fill: INK2 }, r.name));
+      svg.append(svgEl("text", { x: W - m.right + 10, y: cy,
+        "dominant-baseline": "central", "font-size": 11.5, fill: INK2 },
+        fmtSigned(r.blup, 3)));
+
+      const hit = svgEl("rect", { x: 0, y: m.top + i * rowH, width: W,
+        height: rowH, fill: "transparent" });
+      hit.addEventListener("pointermove", e => tt.show(e, r.name, [
+        { label: "grade (PPG above expectation)", value: fmtSigned(r.blup, 3),
+          color: r.color },
+        { label: "95% interval", value: r.ci
+            ? `${fmtSigned(r.ci[0])} to ${fmtSigned(r.ci[1])}` : "—" },
+      ]));
+      hit.addEventListener("pointerleave", () => tt.hide());
+      svg.append(hit);
+    });
+
+    clear(host).append(svg);
+  }
+  render();
+  onResize(host, render);
+}
+
+// series: [{name, color, s}] where s is a strengths block (off/def).
+// The paired form of strengthBars(). Keeps that chart's FIXED +/-0.26 domain:
+// defence really is the shorter row for nearly everyone (the coach effect is
+// stronger on goals scored), and a per-pair domain would erase that.
+//
+// Unlike the single-coach chart, "Attack"/"Defence" cannot live in the left
+// gutter: each is TWO bars here, and the hue alone does not say which coach is
+// which (a reader would have to hover, or carry the picker's border colour down
+// the page). So the group name becomes a heading over its pair, and the gutter
+// names each bar with its coach.
+export function strengthBarsPair(host, series) {
+  const tt = tooltip();
+  const groups = [
+    { key: "off", label: "Attack", sig: "off_significant",
+      hint: "goals scored above expectation" },
+    { key: "def", label: "Defence", sig: "def_significant",
+      hint: "goals conceded below expectation" },
+  ];
+
+  // ~6px per character at 11.5px in the site's stack; shrink a full name to its
+  // last word before truncating, and never collapse two coaches to one label.
+  function fitNames(px) {
+    const w = s => s.length * 6;
+    const clip = s => {
+      const n = Math.max(3, Math.floor(px / 6) - 1);
+      return w(s) <= px ? s : `${s.slice(0, n)}…`;
+    };
+    const out = series.map(se =>
+      w(se.name) <= px ? se.name : clip(se.name.split(" ").pop()));
+    if (new Set(out).size < out.length) return series.map(se => clip(se.name));
+    return out;
+  }
+
+  function render() {
+    const W = measuredWidth(host);
+    const barH = 18, gap = 6, headH = 20, groupGap = 16;
+    const groupH = headH + series.length * barH
+      + (series.length - 1) * gap + groupGap;
+    const m = { top: 10, right: 60, bottom: 30, left: W < 480 ? 100 : 136 };
+    const H = m.top + groups.length * groupH + m.bottom;
+    const svg = chartSvg(W, H);
+    const x = scaleLinear([-STRENGTH_DOMAIN, STRENGTH_DOMAIN], [m.left, W - m.right]);
+    const names = fitNames(m.left - 38);
+
+    svg.append(svgEl("line", { x1: x(0), x2: x(0), y1: m.top, y2: H - m.bottom,
+      stroke: BASE, "stroke-width": 1 }));
+
+    groups.forEach((g, gi) => {
+      const gTop = m.top + gi * groupH + headH;
+      svg.append(svgEl("text", { x: 4, y: gTop - 9, "font-size": 11.5,
+        "dominant-baseline": "central", "font-weight": 700,
+        "letter-spacing": "0.04em", fill: INK2 }, g.label.toUpperCase()));
+
+      series.forEach((se, si) => {
+        const v = se.s[g.key];
+        const yTop = gTop + si * (barH + gap);
+        const cy = yTop + barH / 2;
+        const over = v >= 0;
+        const x0 = Math.min(x(0), x(v)), x1 = Math.max(x(0), x(v));
+        const wBar = Math.max(1, x1 - x0);
+        const rr = Math.min(4, wBar);
+        const d = over
+          ? `M${x0},${yTop} H${x1 - rr} Q${x1},${yTop} ${x1},${yTop + rr} V${yTop + barH - rr} Q${x1},${yTop + barH} ${x1 - rr},${yTop + barH} H${x0} Z`
+          : `M${x1},${yTop} H${x0 + rr} Q${x0},${yTop} ${x0},${yTop + rr} V${yTop + barH - rr} Q${x0},${yTop + barH} ${x0 + rr},${yTop + barH} H${x1} Z`;
+        svg.append(svgEl("path", { d, fill: se.color }));
+        svg.append(svgEl("text", {
+          x: over ? x1 + 8 : x0 - 8, y: cy, "text-anchor": over ? "start" : "end",
+          "dominant-baseline": "central", "font-size": 11, fill: INK2,
+        }, fmtSigned(v)));
+
+        // swatch + name: the swatch does the identifying (the hue may sit below
+        // the contrast a 11.5px label needs), the name is plain ink
+        svg.append(svgEl("rect", { x: 14, y: cy - 4, width: 8, height: 8, rx: 2,
+          fill: se.color }));
+        const label = svgEl("text", { x: 28, y: cy, "dominant-baseline": "central",
+          "font-size": 11.5, fill: INK2 }, names[si]);
+        label.append(svgEl("title", {}, se.name));
+        svg.append(label);
+
+        const hit = svgEl("rect", { x: 0, y: yTop - gap / 2, width: W,
+          height: barH + gap, fill: "transparent" });
+        hit.addEventListener("pointermove", e => tt.show(e, se.name, [
+          { label: g.hint, value: `${fmtSigned(v)} per game`, color: se.color },
+          { label: "vs FDR",
+            value: se.s[g.sig] ? "significant" : "not significant" },
+        ]));
+        hit.addEventListener("pointerleave", () => tt.hide());
+        svg.append(hit);
+      });
+    });
+
+    svg.append(svgEl("text", { x: x(0), y: H - 8, "text-anchor": "middle",
+      "font-size": 11, fill: MUTED },
+      "← below expectation  ·  goals per game  ·  above →"));
+
+    clear(host).append(svg);
+  }
+  render();
+  onResize(host, render);
+}
+
+// axes: [{key, label, coach_owned, a, b}] of percentiles; series names/colors
+// in `series` ([{name, color}, {name, color}]).
+// The paired form of styleBars(): a dumbbell per axis rather than two bar sets,
+// because the readable quantity here is the GAP between the two coaches. Same
+// one-hue-per-coach rule as everywhere else on the page — these axes have no
+// good/bad polarity, so no diverging ramp.
+export function compareStyle(host, axes, series) {
+  const tt = tooltip();
+
+  function render() {
+    const W = measuredWidth(host);
+    const rowH = 32;
+    const m = { top: 8, right: 70, bottom: 30, left: 148 };
+    const H = m.top + axes.length * rowH + m.bottom;
+    const svg = chartSvg(W, H);
+    const x = scaleLinear([0, 100], [m.left, W - m.right]);
+
+    axes.forEach((a, i) => {
+      const cy = m.top + i * rowH + rowH / 2;
+      svg.append(svgEl("line", { x1: x(0), x2: x(100), y1: cy, y2: cy,
+        stroke: GRID, "stroke-width": 6, "stroke-linecap": "round" }));
+      svg.append(svgEl("line", { x1: x(Math.min(a.a, a.b)),
+        x2: x(Math.max(a.a, a.b)), y1: cy, y2: cy,
+        stroke: INK2, "stroke-width": 2, "stroke-opacity": 0.35 }));
+
+      [[a.a, series[0]], [a.b, series[1]]].forEach(([v, se]) => {
+        svg.append(svgEl("circle", { cx: x(v), cy, r: 6, fill: se.color,
+          stroke: SURF, "stroke-width": 2 }));
+      });
+
+      if (a.coach_owned) {
+        svg.append(svgEl("circle", { cx: m.left - 130, cy, r: 3.5, fill: INK2 }));
+      }
+      svg.append(svgEl("text", { x: m.left - 120, y: cy, "font-size": 12,
+        "dominant-baseline": "central", fill: INK2 }, a.label));
+      svg.append(svgEl("text", { x: x(100) + 10, y: cy, "font-size": 11,
+        "dominant-baseline": "central", fill: MUTED },
+        `${a.a} / ${a.b}`));
+
+      const hit = svgEl("rect", { x: 0, y: m.top + i * rowH, width: W,
+        height: rowH, fill: "transparent" });
+      hit.addEventListener("pointermove", e => tt.show(e, a.label, [
+        { label: series[0].name, value: `${ordinal(a.a)} pct`,
+          color: series[0].color },
+        { label: series[1].name, value: `${ordinal(a.b)} pct`,
+          color: series[1].color },
+      ]));
+      hit.addEventListener("pointerleave", () => tt.hide());
+      svg.append(hit);
+    });
+
+    svg.append(svgEl("line", { x1: x(50), x2: x(50), y1: m.top,
+      y2: H - m.bottom, stroke: BASE, "stroke-width": 1 }));
+    svg.append(svgEl("text", { x: x(50), y: H - 8, "text-anchor": "middle",
+      "font-size": 11, fill: MUTED }, "← less  ·  typical coach  ·  more →"));
 
     clear(host).append(svg);
   }

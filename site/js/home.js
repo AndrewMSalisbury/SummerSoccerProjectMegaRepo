@@ -1,7 +1,7 @@
 // home.js — hero, dataset stat tiles, top-coach leaderboard, league tiles.
 
 import { loadJSON, el, clear, fmtSigned } from "./data.js";
-import { initHeader, coachImg, statTile, gradeTier, leagueHue } from "./components.js";
+import { initHeader, coachImg, statTile, gradeTier, leagueHue, logoMark } from "./components.js";
 
 initHeader();
 init();
@@ -27,7 +27,7 @@ async function init() {
   const d = meta.dataset;
   main.append(
     el("div", { class: "hero" },
-      el("h1", {}, "Coach Rankings"),
+      el("div", { class: "hero-title" }, logoMark(46), el("h1", {}, "Coach Rankings")),
       el("p", { class: "hero-link" },
         el("a", { href: "writeup.html" }, "How the model works — read the guide →"))),
     el("div", { class: "stat-row" },

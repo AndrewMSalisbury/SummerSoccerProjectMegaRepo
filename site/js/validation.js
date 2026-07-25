@@ -238,8 +238,7 @@ function renderValidations(V) {
     el("p", { style: "margin:0" },
       "Alone, each has a hole: the first compares coaches across different clubs, the " +
       "second is fitted on history, the third is a single season. Each is vulnerable to " +
-      "something the other two are not, and all three agree. Bookmakers' closing odds " +
-      "price the same signal, from outside the project entirely."));
+      "something the other two are not, and all three agree."));
   return el("div", {}, grid, why);
 }
 
@@ -258,6 +257,7 @@ function valCard(c) {
       c.caveat ? el("p", { class: "val-caveat", style: "margin:4px 0 0" }, c.caveat) : null),
     el("div", { class: "val-row val-rules" },
       el("span", { class: "val-label" }, "What this means"),
-      c.means));
+      c.means, " ",
+      el("a", { href: "writeup.html#does-it-work" }, "How this test works →")));
 }
 

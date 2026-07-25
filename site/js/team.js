@@ -299,7 +299,7 @@ function renderSuggestions(t) {
     "when filters are applied. The model's out-of-sample-tested quality " +
     "ranking is on the leaderboard. Availability, wages, and contracts are " +
     "not modeled (yes, this page will happily suggest hiring Guardiola). See ",
-    el("a", { href: "writeup.html" }, "how it works"), "."));
+    el("a", { href: "writeup.html#team-page" }, "how it works"), "."));
 
   return card;
 }
