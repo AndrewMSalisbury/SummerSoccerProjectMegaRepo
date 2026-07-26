@@ -5,7 +5,8 @@ import { loadJSON, getParam, el, clear, showError,
          fmtSeason, fmtPpg, fmtSigned, fmtPoints } from "./data.js";
 import { initHeader, coachImg, statTile, seasonSpan, gradeTier,
          siteMeta } from "./components.js";
-import { careerChart, strengthBars, styleBars, spectrumBar } from "./charts.js";
+import { careerChart, gradeTimeline, strengthBars, styleBars,
+         spectrumBar } from "./charts.js";
 
 initHeader();
 init();
@@ -32,6 +33,7 @@ async function init() {
   main.append(el("p", { class: "subtitle" }, c.summary));
   main.append(renderStats(c));
   main.append(renderChartCard(c));
+  if (c.history) main.append(renderGradeHistory(c));
   if (c.strengths) main.append(renderStrengths(c));
   if (c.style) main.append(renderStyle(c));
   if (c.formations) main.append(renderFormations(c, ssSpan));
@@ -101,6 +103,60 @@ function edgeNote(s, rating) {
     : "That runs the other way to his grade, which is built on points: his teams " +
       "had the goal difference their squad value predicted but turned less of it " +
       "into points than expected.";
+}
+
+// Grade history (Docs/Coach_Grade_History_Design.md): the grade this model would
+// have given at the end of each past season, refit on only the data available
+// then. Same cut as the headline grade, so the last point IS the grade card
+// above — that identity is enforced at export (gh_verify_endpoint).
+//
+// The footnote is load-bearing. The grading curve is re-fit at every vintage, so
+// a point is his standing against the coaches known THAT year, not a fixed
+// quantity: he can move a little without playing a game. And because the grade
+// is cumulative, a rise usually means more evidence rather than better results —
+// never present this as a form chart.
+function renderGradeHistory(c) {
+  const h = c.history;
+  const card = el("div", { class: "chart-card" });
+  const first = h.points[0], last = h.points[h.points.length - 1];
+  card.append(
+    el("div", { class: "chart-title" }, "How his grade developed"),
+    el("div", { class: "chart-sub" },
+      "The grade this model would have given at the end of each season, using " +
+      `only the data available at the time (${h.cut_label}). ` +
+      `${fmtSeason(first.season)}: ${first.letter} · ` +
+      `${fmtSeason(last.season)}: ${last.letter}.`));
+
+  const host = el("div", {});
+  card.append(host);
+  gradeTimeline(host, h.points);
+
+  // The 0-100 grade scale is clamped (grade_coaches() in coach_attribution.R),
+  // so the handful of coaches more than 2.5 SD above the mean flatten against the
+  // ceiling — Guardiola's line is 100.0 at all nine vintages. That is genuinely
+  // what the site would have published each year, so the fix is to say so, not
+  // to un-clamp the chart and invent grades above 100 that disagree with the
+  // grade card. The tooltip's points-above-expectation keeps moving underneath.
+  const clamped = h.points.filter(p => p.grade >= 100).length;
+  if (clamped) {
+    card.append(el("p", { class: "chart-sub" },
+      clamped === h.points.length
+        ? "His grade has been pinned to the top of the scale for this whole " +
+          "period, so the line is flat: the scale stops at 100, not his record. " +
+          "Hover a season for the points-above-expectation underneath it."
+        : "The grade scale tops out at 100, which his line reaches — hover for " +
+          "the points-above-expectation underneath it."));
+  }
+
+  card.append(el("p", { class: "footnote" },
+    "Each season's grade is set against the coaches known at that point, so the " +
+    "line can shift a little as the pool of graded coaches grows. Grades are " +
+    "cumulative — every earlier season stays in the calculation, so a rise " +
+    "usually means the evidence firmed up rather than that he suddenly improved. " +
+    "The line starts once his record cleared the grading bar and the model could " +
+    "detect a coach effect at all. For season-by-season performance, see the " +
+    "career chart above."));
+  return card;
 }
 
 // tilt = off - def, in goals per game

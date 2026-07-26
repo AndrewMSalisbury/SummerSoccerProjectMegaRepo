@@ -31,9 +31,10 @@ src_render_pages <- list(
   list(url = "index.html",                     min_cards = 1, min_len = 1200),
   list(url = "league.html?id=premier-league",  min_cards = 2, min_len = 2000),
   list(url = "team.html?id=281",               min_cards = 3, min_len = 3000),
-  # a fully-populated coach: grade, career chart, strengths, style, formations, fit
-  list(url = "coach.html?id=5672",             min_cards = 5, min_len = 3000),
-  list(url = "coach.html?id=3517",             min_cards = 3, min_len = 1500),
+  # a fully-populated coach: grade, career chart, grade history, strengths,
+  # style, formations, fit
+  list(url = "coach.html?id=5672",             min_cards = 6, min_len = 3000),
+  list(url = "coach.html?id=3517",             min_cards = 4, min_len = 1500),
   list(url = "compare.html?a=5672&b=3517",     min_cards = 2, min_len = 1500),
   list(url = "validation.html",                min_cards = 4, min_len = 6000),
   list(url = "players.html",                   min_cards = 2, min_len = 3000),

@@ -586,20 +586,37 @@ grade_coaches <- function(coach_blups, mean_score = 75, sd_score = 10) {
 # regardless of games — significance is itself sufficient evidence, and the
 # bar exists to filter records the data can't distinguish from luck. As of
 # 2026-07-14 the exemption re-admits exactly one coach (Xavi, 103 games).
+# Applies the certification bar to a BLUP table and grades the survivors.
+#
+# Factored out of save_coach_grades() so that coach_grade_history.R can replay
+# the identical bar + curve at each historical vintage. If the bar or the curve
+# ever changes, the grade history must move with it — a fork would silently not,
+# and the site would show a timeline that disagrees with the grade card above it.
+# quiet = TRUE suppresses grade_coaches()' full-table print (76 vintage replays).
+grade_blup_table <- function(blups, sig_ids, min_games_graded = 109, quiet = FALSE) {
+  eligible <- blups |>
+    dplyr::filter(total_games >= min_games_graded | coach_id %in% sig_ids)
+  if (quiet) {
+    utils::capture.output(graded <- grade_coaches(eligible))
+  } else {
+    graded <- grade_coaches(eligible)
+  }
+  graded |>
+    dplyr::mutate(rank = dplyr::row_number()) |>
+    dplyr::select(coach_id, coach_name, blup, numeric_grade, letter_grade,
+                  rank, n_stints, total_games, n_clubs)
+}
+
 save_coach_grades <- function(results_dir = "data/results", min_games_graded = 109) {
   cuts <- c(top5 = "coach_blups_top5.rds", `14league` = "coach_blups_14league.rds")
   out <- lapply(names(cuts), function(cut) {
     blups <- readRDS(file.path(results_dir, cuts[[cut]]))
     ranked <- readRDS(file.path(results_dir, paste0("coach_ranked_", cut, ".rds")))
     sig_ids <- ranked$coach_id[!is.na(ranked$significant) & ranked$significant]
-    eligible <- blups |>
-      dplyr::filter(total_games >= min_games_graded | coach_id %in% sig_ids)
+    n_eligible <- sum(blups$total_games >= min_games_graded | blups$coach_id %in% sig_ids)
     cat(sprintf("[%s] certification bar >= %d games (or FDR-significant): grading %d of %d coaches\n",
-                cut, min_games_graded, nrow(eligible), nrow(blups)))
-    graded <- grade_coaches(eligible) |>
-      dplyr::mutate(rank = dplyr::row_number()) |>
-      dplyr::select(coach_id, coach_name, blup, numeric_grade, letter_grade,
-                    rank, n_stints, total_games, n_clubs)
+                cut, min_games_graded, n_eligible, nrow(blups)))
+    graded <- grade_blup_table(blups, sig_ids, min_games_graded = min_games_graded)
     saveRDS(graded, file.path(results_dir, paste0("coach_grades_", cut, ".rds")))
     graded
   })

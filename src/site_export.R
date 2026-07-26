@@ -132,6 +132,18 @@ se_load <- function() {
     d$rec$facts_by_coach <- split(d$rec$facts, d$rec$facts$coach_id)
   }
 
+  # grade history (Docs/Coach_Grade_History_Design.md): per coach, the grade the
+  # site would have published at the end of each past season. Absent file -> the
+  # coach pages simply omit the card. Split by coach up front; there are ~19
+  # vintages per cut and a linear scan per coach page would be O(coaches^2).
+  d$hist <- list()
+  for (cut in c("top5", "14league")) {
+    f <- paste0("data/results/coach_grade_history_", cut, ".rds")
+    if (!file.exists(f)) next
+    h <- readRDS(f)
+    d$hist[[cut]] <- split(h$points, h$points$coach_id)
+  }
+
   # player photos for the team builder (scrape may still be running; players
   # not in the lookup yet simply get the initials fallback)
   d$player_imgs <- if (file.exists("data/cache/player_images.rds")) {
@@ -346,6 +358,47 @@ se_coach_strengths_cut <- function(d, coach_id, cut) {
   )
 }
 
+# --- grade history -----------------------------------------------------------------
+
+# Docs/Coach_Grade_History_Design.md: the grade this site would have published at
+# the end of each past season, recomputed on data available only at that point.
+#
+# Read from the SAME cut as the headline grade, and gated on being graded — like
+# se_coach_strengths(), this is the grade replayed, so it inherits the display
+# certification bar rather than inventing its own. Each point is already a
+# certified grade at its own vintage (coach_grade_history.R applies
+# grade_blup_table() per vintage), so the line starts the season his record first
+# cleared the bar.
+#
+# `season` is the last COMPLETED season in that vintage's fit (cutoff - 1), so
+# the frontend never sees a cutoff integer and cannot render the off-by-one.
+se_history_min_points <- 3   # mirrors gh_min_points
+
+se_grade_history <- function(d, coach_id, rating) {
+  if (is.null(rating)) return(NULL)
+  by_coach <- d$hist[[rating$cut]]
+  if (is.null(by_coach)) return(NULL)
+  p <- by_coach[[coach_id]]
+  if (is.null(p) || nrow(p) < se_history_min_points) return(NULL)
+  p <- p[order(p$season), ]
+
+  list(
+    cut        = rating$cut,
+    cut_label  = rating$cut_label,
+    min_season = min(p$season),
+    max_season = max(p$season),
+    points = lapply(seq_len(nrow(p)), function(i) list(
+      season   = p$season[i],
+      grade    = p$numeric_grade[i],
+      letter   = p$letter_grade[i],
+      rank     = p$rank[i],
+      n_graded = p$n_graded[i],
+      blup     = se_num(p$blup[i], 4),
+      games    = p$total_games[i]
+    ))
+  )
+}
+
 # Layer B (design sec. 3): the style of the teams this coach ran, as percentiles
 # among the profiled coaches. NULL outside the big-5 SofaScore era or below the
 # se_style_min_games bar. `coach_owned` marks the two axes where phase 4 found
@@ -442,6 +495,7 @@ se_export_coaches <- function(d) {
         graded_through   = se_fit_last_season
       ),
       rating = rating,
+      history = se_grade_history(d, coach_id, rating),
       strengths = se_coach_strengths(d, coach_id, rating),
       # always-14-league copy, so compare.html can put any two graded coaches on
       # one cut (every top-5-graded coach is also 14-league-graded)

@@ -96,7 +96,7 @@ to its most-recent spelling; `compute_coach_stats()` now groups by id only. A
 stint rows instead of crashing (fixed in `cs_build_team_xg()`). Expect this to recur: any
 season can re-spell any name.
 
-Later milestones build on this in a source chain — `coach_attribution.R` → `residual_analysis.R` → `model_comparison.R` → `tabler.R` (with `source_data.r` sourced manually first): `model_comparison.R` (M3, `run_milestone3()`), `residual_analysis.R` (M4, `run_milestone4()`), `coach_attribution.R` (M5, `run_milestone5()`), `augmented_model.R` (coach BLUP CV). All of M5 weights stints by `n_games` (since 2026-07-14): short caretaker stints carry far noisier per-game residuals, and games-weighted BLUPs predicted held-out stints better than unweighted ones. This covers the mixed model, the per-coach mean residuals, and the significance t-tests (which require ≥ 3 stints — df = 1 SEs can collapse when two stints agree by luck). The mixed model's residual variance component is therefore per-game — the recommender's posterior-SD constants in `cr_build_scorer()` must be refreshed whenever M5 is refit. Separately, `save_coach_grades()` applies a **display certification bar** (≥ 109 career games in the cut, or FDR-significant): sub-bar coaches keep their BLUP and stay in the mixed model but get no grade, no leaderboard slot, and no recommender-pool entry (the pool in `cr_score_team()` filters to graded coaches). The bar is presentational — every score-side penalty for thin/selection-flattered records (weight floors, truncation-share and gap penalties) tested worse out-of-sample, so the ranking math must not be "corrected" for it.
+Later milestones build on this in a source chain — `coach_attribution.R` → `residual_analysis.R` → `model_comparison.R` → `tabler.R` (with `source_data.r` sourced manually first): `model_comparison.R` (M3, `run_milestone3()`), `residual_analysis.R` (M4, `run_milestone4()`), `coach_attribution.R` (M5, `run_milestone5()`), `augmented_model.R` (coach BLUP CV). All of M5 weights stints by `n_games` (since 2026-07-14): short caretaker stints carry far noisier per-game residuals, and games-weighted BLUPs predicted held-out stints better than unweighted ones. This covers the mixed model, the per-coach mean residuals, and the significance t-tests (which require ≥ 3 stints — df = 1 SEs can collapse when two stints agree by luck). The mixed model's residual variance component is therefore per-game — the recommender's posterior-SD constants in `cr_build_scorer()` must be refreshed whenever M5 is refit. Separately, `save_coach_grades()` applies a **display certification bar** (≥ 109 career games in the cut, or FDR-significant): sub-bar coaches keep their BLUP and stay in the mixed model but get no grade, no leaderboard slot, and no recommender-pool entry (the pool in `cr_score_team()` filters to graded coaches). The bar is presentational — every score-side penalty for thin/selection-flattered records (weight floors, truncation-share and gap penalties) tested worse out-of-sample, so the ranking math must not be "corrected" for it. The bar + curve live in **`grade_blup_table()`**, shared verbatim with the grade-history layer (`coach_grade_history.R`) so a historical vintage cannot drift from the published grade — change it there, never in a copy.
 
 ### Coach Strengths Layer (`src/coach_strengths.R`)
 
@@ -432,6 +432,60 @@ Three concordant validations of the coach grade now exist on independent designs
 recommender payoff (Part 7, p=0.016), the event study (Part 11a, p=0.004), and the forward
 test (Part 11b, p=0.0024). Re-run all three savers after any M4/M5 refit before exporting.
 
+### Coach Grade History Layer (`src/coach_grade_history.R`)
+
+The coach page's "How his grade developed" card (design:
+`Docs/Coach_Grade_History_Design.md`; built 2026-07-26, session log
+`Docs/Session_Log_2026-07-26b.md`). `gh_` prefix, pure results-reader over
+`mb_prep.rds` — no scraping. For each past season it replays the **whole published
+pipeline** on data available only then (M3 lm on `season < cutoff` → stint partial
+residuals → `fit_mixed_model()` → `add_significance()` → certification bar + grade
+curve) and writes `coach_grade_history_{top5,14league}.rds`. `gh_run_all()` runs
+everything; the whole thing is **~30 seconds**, so re-running is cheap.
+
+**A vintage is indexed by cutoff C = "fit on `season < C`", but is LABELLED by
+season C − 1** — cutoff 2025 renders as 2024/25. The `season` column is already
+C − 1 so the frontend cannot re-introduce the off-by-one.
+
+**`grade_blup_table()` (in `coach_attribution.R`) is shared with
+`save_coach_grades()`, not forked** — same certification bar, same curve, so the
+history moves if either ever changes. Because the curve is re-fit at every vintage,
+the last vintage *is* the live fit, which makes the acceptance test exact:
+`gh_verify_endpoint()` requires the final point to reproduce `coach_grades_<cut>.rds`
+(coach set, ranks, letters, grades). It passes at **max |Δgrade| = 0.00e+00** on both
+cuts, and `gh_verify_asof_cache()` reproduces all 18 `mb_asof_blups.rds` vintages at
+0.00e+00. **Re-run `gh_run_all()` after any M4/M5 refit** — the endpoint check fails
+loudly if you don't, which is the point.
+
+Facts that will bite if forgotten:
+
+- **The guard is the M5 LRT, not the pool size, and that is not a style preference.**
+  On a thin sample lme4 puts the coach variance on the zero boundary, every BLUP is
+  exactly 0, `grade_coaches()` divides 0 by 0, and every coach gets `NaN` — which
+  `to_letter()` silently renders as **"F"**. Top-5 2008/09 did this **with 44 graded
+  coaches**, i.e. a pool ≥ 40 test does not catch it. Guard on `lrt_p < 0.05` +
+  `blup_sd > 0` (pool size secondary), with a `stopifnot` backstop.
+- **Only the contiguous run ending at the endpoint is published.** Top-5 2016/17
+  fails at p = 0.064 while 2015/16 and 2017/18 pass, so cherry-picking passers holes
+  the middle of every top-5 line. Published windows: **top5 2017/18→2025/26 (9
+  vintages), 14league 2010/11→2025/26 (16)**. The coach effect is only *continuously*
+  detectable in the big-5-only cut from 2017/18 — remember that before trusting a
+  top-5 p-value from a thin era.
+- **The grade scale clamps at 100 and Guardiola is pinned to it** — his line is
+  100.0 at all nine vintages (2.5% of top-5 points, 3 top-5 + 2 14-league coaches
+  wholly flat). That is what the site would have published each year and the grade
+  card agrees, so `renderGradeHistory()` **explains** it with a note; do not
+  un-clamp the chart, which would invent grades above 100 and break the endpoint
+  identity.
+- The card reads the **same cut as the headline grade**, so a top-5-headline coach
+  gets a 9-point line and a 14-league-only coach up to 16. Cards need ≥ 3 published
+  vintages (`se_history_min_points` / `gh_min_points`): 208 of 224 top-5 and 520 of
+  566 14-league coaches qualify.
+- It is a **cumulative career-to-date verdict, not a form chart** — early stints
+  never leave the sample, so a rise usually means the evidence firmed up rather than
+  that the coach improved, and a late season barely moves a long career. The
+  per-stint form view is the "Career points per game" chart directly above it.
+
 ### Website Layer (`src/site_export.R`, `site/`)
 
 A static presentation site lives in `site/` at the repo root — the one place the R code writes outside `src/data/` (it is a publishing target, not analysis data). Design: `Docs/Website_Design.md`; build plan: `Docs/Website_Implementation_Plan.md`.
@@ -471,13 +525,15 @@ describing what that run actually did after the fit window moves past it.
 `ss_data_populate_big5(start_years="<yr>")` (add the season ids to `ss_big5_leagues` and
 the `player_archetypes.R` mirror — they must not drift), rebuild `ds_<yr>.rds`, snapshot
 `coach_blups_14league_asof<yr-1>.rds`, bump `xx_last_data_season`, `run_refit()`, re-run
-the downstream layers, then `run_forward_test()` with `ft_holdout_season`/
-`ft_blup_vintage` bumped.
+the downstream layers **including `gh_run_all()`** (coach_grade_history.R — adds one
+vintage, seconds; its endpoint check fails loudly if the refit moved without it), then
+`run_forward_test()` with `ft_holdout_season`/`ft_blup_vintage` bumped.
 
 - `export_site_data()` (`se_` prefix, working dir `src/`) regenerates everything under `site/data/` (per-coach/team/league JSON keyed by TM numeric ids, leaderboard, search index, meta), `site/assets/` (coach images + club crests copied from `data/images/`), and `site/writeup.html` (converted via `{commonmark}` from **`Docs/How_It_Works.md`** — the plain-language guide, since 2026-07-23; it was `Docs/Summary_of_Findings.md` before that). It wipes and rebuilds those paths; never edit them by hand. Hand-written files (`*.html` except writeup, `css/`, `js/`, `img/`) are never touched.
 - **The logo lives in `site/img/logo.svg`, deliberately not `site/assets/`** (which is wiped on every export). It is the "Residual S" mark — two tapered wedges, the lower one the upper rotated 180°, filled with the two masthead-gradient stops. That file is the **favicon** (linked from every page's `<head>`, including the writeup template in `se_write_writeup()`). On-page uses are **inline SVG instead**, via `logoMark(size)` in `components.js` (header lockup at 18px, home hero at 46px): an external `<img>` cannot read `--series-1`/`--series-2`, so it would not track the light/dark theme the way the mark it replaced did.
 - **`Summary_of_Findings.md` therefore has no published surface.** The convention "a null lives in the writeup, not on the site" (xG cut, Layer C, CDE Part 9, market benchmark Part 10) now means *documented in the repo*, not *reachable by a reader* — the site's honesty gradient survives in `How_It_Works.md` ("How much to trust each number", "What the model does not do"), the statistics do not. Site copy links to `writeup.html` as "how it works" with **no part anchors**; do not add deep links to writeup parts unless the technical document is republished as its own page. `Docs/Website_Design.md` still describes the writeup page as-designed (a `Summary_of_Findings` rendering) and is stale on this point.
 - Export inputs: `data/results/*.rds` — including `coach_grades_*.rds` (written by `save_coach_grades()` in `coach_attribution.R`), `archetype_fit.rds` (written by `cf_save_results()` in `coach_fit.R`), `coach_strengths_{top5,14league}.rds` + `coach_style.rds` (the descriptive profile, below), and `recommender.rds` (written by `cr_save_results()` in `coach_recommender.R` — feeds the team-page "Suggested coaches" section; teams without an entry get a note card). Re-run those savers after re-running M5/M6/recommender before exporting.
+- **Grade history on coach pages** ("How his grade developed", shipped 2026-07-26): `se_grade_history()` → `coach.js renderGradeHistory` → `charts.js gradeTimeline`, sitting between the career-PPG chart and the strengths card. Reads `coach_grade_history_<cut>.rds` for the **headline cut** and is gated on being graded (it is the grade replayed, so it inherits the certification bar) plus ≥ 3 published vintages. `gradeTimeline()` is deliberately not a reuse of `lineChart()` — that helper's zero-based domain flattens every career against a 0–100 scale, and it knows nothing about the **75 reference line**, which the domain always contains because it is the only thing that makes a number like "78" mean anything. See the Coach Grade History Layer above for the clamp and windowing traps.
 - **Descriptive profile on coach pages** (phase 6, shipped 2026-07-16, design `Docs/Coach_Descriptive_Profile_Design.md` §6): two cards, both **gated by the honesty label of their layer, not by what the data allows**:
   - "Where his edge comes from" (`se_coach_strengths()` → `coach.js renderStrengths` → `charts.js strengthBars`) — the Layer A goals cut. Read from the **same cut as the headline grade** and shown **only for graded coaches** (566 as of the 2025/26 refit): it re-slices the BLUP, so it inherits the grade's display certification bar rather than inventing its own. `STRENGTH_DOMAIN` (±0.26 goals/game) is a **fixed** x domain shared by both rows and every coach — defence bars are visibly shorter than attack for nearly everyone because the coach effect really is stronger on goals scored (LRT χ² = 160 vs 60); do not give the rows separate axes to "fix" it. `edgeNote()` fires when the goal edge and the BLUP disagree in sign (Simeone: B grade, −0.03 goal edge) — without it the lede flatly contradicts the grade card above it.
   - "Style of the teams he coached" (`se_coach_style()` → `renderStyle` → `styleBars`) — Layer B, for the 256 coaches with ≥ `se_style_min_games` (38) of big-5 style data. Carries a separate inset **pressing-height block** (`renderPressingHeight` → `charts.js spectrumBar`, a named-pole percentile scale "Deep block ↔ High press"): it is inset because it is measured per *season*, not per match, so unlike the nine axes it cannot always be pinned to the coach rather than his club (`blended` flag, 56 of 256). **Do not draw it on a pitch** — the stat is the share of possession won in the attacking third *ranked against other coaches*, so a marker at a pitch position would claim a physical location the data does not contain. **Percentile, never raw SD** (design §3.3: coach means compress toward 0, so raw SD renders every fingerprint flat); percentiles are ranked *within* the same ≥38-game set that is displayed, so they differ slightly from the ≥100-game percentiles quoted in the design doc/session logs. **One hue, not the site's pos/neg pair** — these axes have no good/bad polarity and the diverging ramp would invent a verdict. The title, the `coach_owned` dots (lineup stability + pressing intensity only) and the footnote are all load-bearing per design §5: club identity beats coach on 7 of 9 axes, so the card may never say "his style".

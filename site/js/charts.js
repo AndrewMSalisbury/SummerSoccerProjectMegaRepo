@@ -219,6 +219,116 @@ export function careerChart(host, stints, opts = {}) {
   };
 }
 
+// ---------- coach grade history ----------
+
+// Docs/Coach_Grade_History_Design.md: the grade this model would have given at
+// the end of each past season, refitting on only the data available then.
+//
+// This is a CUMULATIVE career-to-date verdict, not a form curve — early stints
+// never leave the sample, so the line is heavily smoothed by construction and a
+// late season moves a long career very little. The per-stint form view is
+// careerChart() above; the two must not drift into looking like one chart with
+// two axes.
+//
+// Not a reuse of lineChart(): that helper hard-codes a zero-based y domain (which
+// flattens every real career against a 0-100 grade scale) and knows nothing about
+// the 75 reference line, which is the single piece of context that makes a number
+// like "78" mean anything here.
+const GRADE_MIN_SPAN = 10;   // a career spent between 84.1 and 85.3 is not a mountain range
+
+export function gradeTimeline(host, points, opts = {}) {
+  const tt = tooltip();
+  const pts = (points || []).filter(p => p.grade != null).sort((a, b) => a.season - b.season);
+
+  function render() {
+    if (pts.length < 2) { clear(host).append(el("p", { class: "muted" }, "No data.")); return; }
+    const W = measuredWidth(host);
+    const H = 240;
+    const m = { top: 18, right: 64, bottom: 34, left: 44 };
+    const svg = chartSvg(W, H);
+
+    // Domain always contains the 75 line: the reference is not optional context,
+    // and a coach who never crosses it would otherwise scroll it off the chart.
+    let lo = Math.min(75, ...pts.map(p => p.grade));
+    let hi = Math.max(75, ...pts.map(p => p.grade));
+    if (hi - lo < GRADE_MIN_SPAN) {
+      const c = (lo + hi) / 2;
+      lo = c - GRADE_MIN_SPAN / 2;
+      hi = c + GRADE_MIN_SPAN / 2;
+    }
+    const pad = (hi - lo) * 0.14;
+    const y = scaleLinear([lo - pad, hi + pad], [H - m.bottom, m.top]);
+    const x = scaleLinear([pts[0].season, pts[pts.length - 1].season],
+                          [m.left + 10, W - m.right]);
+
+    yAxis(svg, y, m.left, W - m.right, v => String(Math.round(v)));
+    svg.append(svgEl("line", { x1: m.left, x2: W - m.right, y1: H - m.bottom,
+      y2: H - m.bottom, stroke: BASE, "stroke-width": 1 }));
+
+    // the cohort mean, which the per-vintage curve pins at 75 by construction
+    svg.append(
+      svgEl("line", { x1: m.left, x2: W - m.right, y1: y(75), y2: y(75),
+        stroke: BASE, "stroke-width": 1, "stroke-dasharray": "4 4" }),
+      svgEl("text", { x: W - m.right + 6, y: y(75), "dominant-baseline": "central",
+        "font-size": 10.5, fill: MUTED }, "average"));
+
+    const every = Math.ceil(pts.length / Math.max(3, Math.floor((W - 110) / 64)));
+    pts.forEach((p, i) => {
+      if (i % every && i !== pts.length - 1) return;
+      svg.append(svgEl("text", { x: x(p.season), y: H - m.bottom + 16,
+        "text-anchor": "middle", "font-size": 10.5, fill: MUTED }, fmtSeason(p.season)));
+    });
+
+    // Break the path at gaps rather than interpolating across them. A coach
+    // admitted only by the FDR exemption can drop back below the games bar, and
+    // a straight line over that would draw a grade the model never produced.
+    const segs = [];
+    let cur = [pts[0]];
+    for (let i = 1; i < pts.length; i++) {
+      if (pts[i].season - pts[i - 1].season > 1) { segs.push(cur); cur = []; }
+      cur.push(pts[i]);
+    }
+    segs.push(cur);
+    for (const seg of segs) {
+      if (seg.length < 2) continue;
+      svg.append(svgEl("path", {
+        d: seg.map((p, i) => `${i ? "L" : "M"}${x(p.season)},${y(p.grade)}`).join(""),
+        fill: "none", stroke: S1, "stroke-width": 2,
+        "stroke-linecap": "round", "stroke-linejoin": "round" }));
+    }
+
+    for (const p of pts) {
+      svg.append(svgEl("circle", { cx: x(p.season), cy: y(p.grade), r: 3,
+        fill: S1, stroke: SURF, "stroke-width": 1.5 }));
+    }
+
+    const last = pts[pts.length - 1];
+    svg.append(
+      svgEl("circle", { cx: x(last.season), cy: y(last.grade), r: 4.5, fill: S1,
+        stroke: SURF, "stroke-width": 2 }),
+      svgEl("text", { x: x(last.season), y: y(last.grade) - 11, "text-anchor": "end",
+        "font-size": 11.5, fill: INK2, "font-weight": 600 }, last.letter));
+
+    // hit targets larger than the marks
+    for (const p of pts) {
+      const c = svgEl("circle", { cx: x(p.season), cy: y(p.grade), r: 12,
+        fill: "transparent", cursor: "default" });
+      c.addEventListener("pointermove", e => tt.show(e, fmtSeason(p.season), [
+        { label: "Grade", value: `${p.letter} (${p.grade.toFixed(1)})`, color: S1 },
+        { label: "Rank", value: `${ordinal(p.rank)} of ${p.n_graded}` },
+        { label: "Above expectation", value: `${fmtSigned(p.blup, 3)} PPG` },
+        { label: "Games so far", value: String(p.games) },
+      ]));
+      c.addEventListener("pointerleave", () => tt.hide());
+      svg.append(c);
+    }
+
+    clear(host).append(svg);
+  }
+  render();
+  onResize(host, render);
+}
+
 // ---------- team season dumbbell (expected -> actual points) ----------
 
 export function dumbbellChart(host, seasons, opts = {}) {
