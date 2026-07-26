@@ -102,7 +102,7 @@ function renderCoachHistory(t) {
   const rows = t.coach_history.map(r => ({ ...r }));
 
   const cols = [
-    { label: "Season", render: r => fmtSeason(r.season) },
+    { label: "Season", render: r => el("span", {}, fmtSeason(r.season)) },
     { label: "Coach", render: r => r.coach
         ? el("a", { class: "cell-entity", href: `coach.html?id=${r.coach_id}` },
             coachImg(r.img, r.coach), r.coach)

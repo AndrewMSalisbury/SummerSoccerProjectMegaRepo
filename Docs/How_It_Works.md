@@ -40,13 +40,13 @@ by the share of league minutes he actually played, then summed. It is a measure 
 value a team *put on the pitch*, not the value it owned.
 
 This was the project's original hypothesis, and it holds: minutes-weighted value
-predicts final points better than raw squad value, in 14 leagues over 20 seasons, and
+predicts final points better than raw squad value, in 14 leagues over 21 seasons, and
 the margin survives every cross-validation test thrown at it. It is a small margin
-(about 0.014 points per game) but a consistent one.
+(about 0.016 points per game) but a consistent one.
 
 ### Step 2 — What should this team have scored?
 
-A single model, fitted across all 14 leagues and 20 seasons, turns squad value into
+A single model, fitted across all 14 leagues and 21 seasons, turns squad value into
 expected points per game. Two details matter:
 
 - **Values are compared within a league-season, not across them.** Being worth €200m
@@ -105,8 +105,34 @@ Two consequences to keep in mind:
 - **A coach must earn a grade.** The bar is roughly **109 career games** in that ranking
   (or a result strong enough to be statistically significant on its own). Below it, a
   coach still appears on the site with his stints and residuals, but with no grade —
-  the data cannot tell his record apart from luck. Of 2,341 coaches in the dataset,
-  **545** clear the bar in the all-leagues ranking and **215** in the top-5 ranking.
+  the data cannot tell his record apart from luck. Of 2,445 coaches in the dataset,
+  **566** clear the bar in the all-leagues ranking and **224** in the top-5 ranking.
+
+### What the model has seen
+
+Everything on the site — league tables, team pages, coach grades — is fitted on the
+full span, **2005/06 through 2025/26**. When a new season is scraped it is added to the
+fit, and every grade is recomputed from scratch over the whole history.
+
+That raises an obvious question, and it is worth answering plainly: if the model has
+been fitted to every season it displays, how can any of it be a *test*? A model can
+always explain a season it was fitted to.
+
+The answer is that the tests on the "Does it work?" page were run **before** the fit
+moved. Test 3 in particular took the grades as they stood at the end of 2024/25, froze
+them, and used them to predict 2025/26 while that season was still unplayed from the
+model's point of view. The result of that test is a fact about a specific run and does
+not change when the model is later updated. Once the season had been scored, it was
+folded into the fit like any other.
+
+So the grade you see on a coach page today is **not the same number** test 3 validated
+— it is a later version of it, one that has since absorbed 2025/26. The validation page
+says so on the card. What carries over is the finding: grades built this way predicted a
+season they had never seen, which is evidence about the method, not about any one
+number.
+
+Each new season repeats the cycle: scrape it, score it against the frozen grades, record
+the result, then refit.
 
 ### The two cuts
 
@@ -148,7 +174,7 @@ grade and often no top-5 grade at all.
 The front page is the ranking. Toggle between the two cuts; the table gives each coach's
 grade, score, BLUP, career stints, clubs, games, and mean residual. "sig" marks the rare
 coaches whose record is individually significant. The stat tiles above it are the size
-of the dataset: 14 leagues, 20 seasons, 5,087 team-seasons, 2,341 coaches.
+of the dataset: 14 leagues, 21 seasons, 5,339 team-seasons, 2,445 coaches.
 
 The league tiles at the bottom, the dropdown in the header, and the search box (coaches,
 teams, leagues) are the ways into everything else.
@@ -248,9 +274,10 @@ A different question, and the only page not about coaches.
 
 The model expects a player's market value to move along a trajectory set by his age,
 his current price, his position and his recent momentum. The **chart at the top is that
-expectation** — one curve per position group, running from roughly +60–79% a year at 16
-down to −35% at 34, crossing zero around 26–27 for outfielders. Goalkeepers are the
-outlier the curve makes visible: nearly flat until the mid-twenties, crossing zero at 27.
+expectation** — one curve per position group, running from roughly +65–81% a year at 16
+down to about −36% at 34, crossing zero at 26 for outfielders. Goalkeepers are the
+outlier the curve makes visible: only +11% at 16 and nearly flat until the mid-twenties,
+crossing zero at 27.
 
 The **leaderboard** ranks the players who beat their own curve by the widest margin —
 genuine breakouts rather than expensive teenagers getting more expensive. Filter by
@@ -279,15 +306,19 @@ deliberately different designs, each vulnerable to something the other two are n
 
 | | Design | Question | Result |
 |---|---|---|---|
-| **Test 1** | Out-of-sample forecast | Does a coach's grade improve the forecast of a *new* appointment? | Forecast error falls; p = 0.016 |
-| **Test 2** | Natural experiment | When one club swaps managers, does the incoming grade predict what changes? | ≈ +0.7 pts/season per SD of grade; p = 0.004 |
+| **Test 1** | Out-of-sample forecast | Does a coach's grade improve the forecast of a *new* appointment? | Forecast error falls; p = 0.0027 |
+| **Test 2** | Natural experiment | When one club swaps managers, does the incoming grade predict what changes? | ≈ +0.7 pts/season per SD of grade; p = 0.0015 |
 | **Test 3** | Future holdout | Do grades frozen before a season predict that season? | ≈ +1.4 pts/season per SD; p = 0.0024 |
+
+Test 3's grades were frozen at the end of 2024/25, before 2025/26 was played. That
+season is now part of the fit ([what the model has seen](#what-the-model-has-seen)), so
+the grades on coach pages today are a later vintage than the ones the test scored.
 
 Tests 1 and 2 are the pair readers conflate — both are about hiring. The difference:
 test 1 pools appointments across hundreds of clubs, while test 2 holds a single club
 fixed across a single swap.
 
-The page then goes inside two of them. For test 3, two charts: every club in the holdout
+The page then goes inside two of them. For test 3, two charts: every club in the tested
 season plotted against what the frozen model expected (the cloud around the diagonal is
 the residual, made visible), and each coach's prior grade against what his team actually
 went on to do. That second chart is deliberately unflattering — the correlation is only

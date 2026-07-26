@@ -801,7 +801,8 @@ export function expectedVsActual(host, rows, opts = {}) {
     const midY = (m.top + H - m.bottom) / 2;
     svg.append(
       svgEl("text", { x: (m.left + W - m.right) / 2, y: H - 8, "text-anchor": "middle",
-        "font-size": 11, fill: MUTED }, "Expected points per game (model frozen at 2024)"),
+        "font-size": 11, fill: MUTED },
+        `Expected points per game${opts.frozenAt ? ` (model frozen at ${opts.frozenAt})` : ""}`),
       svgEl("text", { x: 13, y: midY, "font-size": 11, fill: MUTED,
         "text-anchor": "middle", transform: `rotate(-90 13 ${midY})` },
         "Actual points per game"));

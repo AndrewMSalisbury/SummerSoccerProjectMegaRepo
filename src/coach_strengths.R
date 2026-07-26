@@ -303,7 +303,7 @@ cs_save_results <- function(strengths, stints, cut, results_dir = "data/results"
 # the two head models, checks the tie-back to the points residual, attributes
 # to coach stints, and fits the two mixed models.
 run_coach_strengths <- function(cut = c("top5", "14league"),
-                                seasons      = 2005:2024,
+                                seasons      = 2005:xx_last_data_season,
                                 min_coverage = 80,
                                 min_games    = 10,
                                 min_stints   = 3,
@@ -391,7 +391,7 @@ run_coach_strengths <- function(cut = c("top5", "14league"),
 # EXCLUDED — partial coverage would understate team xG on a non-random subset of
 # matches. This layer is a recent-form lens over 3 seasons of the big 5, never a
 # career verdict, and must be labelled as such wherever it is shown.
-cs_xg_seasons <- 2022:2024
+cs_xg_seasons <- 2022:xx_last_data_season
 
 # Per (event, team) xG and goals for one big-5 league-season, joined to the TM
 # team_season_id and the coach in charge via cf_season_match_coaches() (which
@@ -589,7 +589,11 @@ cs_build_coach_xg_residuals <- function(team_xg, xg_head_tbl) {
       shotstop_resid   = (xg_against - goals_against) / n_games
     ) |>
     left_join(
-      xx_data_cache$coaches |> distinct(coach_id, coach_name),
+      # canonicalised first: a coach_id carrying two name spellings (Transfermarkt
+      # re-spelled Ivan Juric as "Ivan Jurić" in 2025/26) would otherwise make
+      # this a one-to-many join and silently duplicate his stint rows
+      xx_canonical_coach_names(xx_data_cache$coaches) |>
+        distinct(coach_id, coach_name),
       by = "coach_id"
     ) |>
     select(coach_id, coach_name, team_season_id, team_name, league, season,

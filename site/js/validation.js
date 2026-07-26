@@ -81,7 +81,7 @@ async function init() {
       "seasons it was trained on. Points per game rather than total points because these " +
       "leagues play between 22 and 46 games."));
     main.append(c1);
-    expectedVsActual(host1, F.scatter);
+    expectedVsActual(host1, F.scatter, { frozenAt: F.frozen_at });
   }
 
   // The chart's own footnote carries R² and the average miss, so the tiles keep
@@ -192,7 +192,8 @@ function renderValidations(V) {
       headline: `Forecast error fell ${P.rmse0.toFixed(3)} → ${P.rmse1.toFixed(3)} PPG, ` +
         `better in ${P.folds_improved} of ${P.n_folds} seasons`,
       p: P.p,
-      caveat: "Against realized squad value; the stricter pre-hire framing is weaker (p = 0.052).",
+      caveat: "Against realized squad value; the stricter pre-hire framing is weaker" +
+        (P.p_prehire != null ? ` (p = ${pfmt(P.p_prehire).replace(/^p = /, "")}).` : "."),
       means: "Grades are worth consulting at the moment of hiring, not just in hindsight.",
     }));
   }
@@ -220,15 +221,26 @@ function renderValidations(V) {
     kind: "Future holdout",
     title: "A season that had not been played",
     question: "Do grades built on the past predict the future?",
-    does: "The model was frozen at the end of 2024 — the squad-value formula and every " +
-      `coach's grade — before ${F.season} had been played. That season was then scraped ` +
-      `after the fact and predicted cold: ${F.n_team_seasons} team-seasons and ` +
-      `${F.n_stints} coach stints it knew nothing about. The test is whether the coaches ` +
-      "it had already rated highly went on to beat their squad's expectation.",
+    does: `The model was frozen at the end of ${F.frozen_at} — the squad-value ` +
+      `formula and every coach's grade — before ${F.season} had been played. That season ` +
+      `was then scraped after the fact and predicted cold: ${F.n_team_seasons} ` +
+      `team-seasons and ${F.n_stints} coach stints it knew nothing about. The test is ` +
+      "whether the coaches it had already rated highly went on to beat their squad's " +
+      "expectation.",
     headline: `${fmtSigned(F.pts_per_sd, 1)} points a season per standard deviation of grade`,
     p: F.q2_p,
     caveat: `Adding the grade cut forecast error ${F.rmse_noaug.toFixed(3)} → ` +
       `${F.rmse_aug.toFixed(3)} PPG. One season — the test is re-run every year.`,
+    // The grades elsewhere on the site have since been refit to include the very
+    // season this test held out. Without saying so, the card reads as if the
+    // number on a coach page were the one that was validated — it is a later
+    // vintage of it. This is the one place a reader can catch that, so it is on
+    // the card, not in a footnote.
+    vintage: F.vintage_differs
+      ? `Grades shown elsewhere on this site now run through ${F.site_grades_through}, ` +
+        `so they include this season. The test used the earlier ${F.frozen_at} vintage, ` +
+        "which had never seen it."
+      : null,
     means: "The grades carry genuine forward-looking information, with no hindsight of any kind.",
   }));
 
@@ -254,7 +266,8 @@ function valCard(c) {
     row("Result",
       el("div", { class: "val-headline" }, c.headline,
         el("span", { class: "val-p" }, pfmt(c.p))),
-      c.caveat ? el("p", { class: "val-caveat", style: "margin:4px 0 0" }, c.caveat) : null),
+      c.caveat ? el("p", { class: "val-caveat", style: "margin:4px 0 0" }, c.caveat) : null,
+      c.vintage ? el("p", { class: "val-caveat", style: "margin:4px 0 0" }, c.vintage) : null),
     el("div", { class: "val-row val-rules" },
       el("span", { class: "val-label" }, "What this means"),
       c.means, " ",

@@ -162,10 +162,15 @@ function renderChart(card, rows, season) {
 function renderStats(L) {
   const wrap = el("div", {});
   wrap.append(el("h2", {}, "League statistics"));
+  // R² and RMSE describe the fit, so they are computed on the fitted seasons
+  // only — the hint names that window, which is one season shorter than the
+  // team-season count beside it.
+  const fitWin = L.stats.fit_seasons;
   wrap.append(el("div", { class: "stat-row" },
     statTile("Team-seasons", String(L.stats.n_team_seasons)),
-    statTile("Model R²", L.stats.r2?.toFixed(2) ?? "—", "squad value → points"),
-    statTile("Model RMSE", L.stats.rmse?.toFixed(2) ?? "—", "PPG")));
+    statTile("Model R²", L.stats.r2?.toFixed(2) ?? "—",
+      `squad value → points · ${fitWin}`),
+    statTile("Model RMSE", L.stats.rmse?.toFixed(2) ?? "—", `PPG · ${fitWin}`)));
 
   const lists = el("div", { style:
     "display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px" });

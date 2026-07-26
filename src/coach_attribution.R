@@ -125,8 +125,13 @@ compute_coach_stats <- function(coach_residuals_tbl, min_games = 10, min_stints 
                                 label = "PPG") {
   stats <- coach_residuals_tbl |>
     filter(!is.na(partial_residual_ppg)) |>
-    group_by(coach_id, coach_name) |>
+    # coach_id is the identity; coach_name rides along as a label. Grouping by
+    # both splits a career whenever Transfermarkt re-spells a name mid-history
+    # (see xx_canonical_coach_names) — and fit_mixed_model() groups by id alone,
+    # so the two tables would silently disagree about who exists.
+    group_by(coach_id) |>
     summarize(
+      coach_name    = dplyr::last(coach_name[order(season)]),
       n_stints      = n(),
       total_games   = sum(n_games),
       n_clubs       = n_distinct(sub("/saison_id/\\d+", "", team_season_id)),
@@ -428,8 +433,41 @@ xx_filter_value_coverage <- function(team_season_tbl, min_coverage = 80) {
   filtered
 }
 
+# One name per coach_id.
+#
+# coach_id (a Transfermarkt profile URL) is the identity; coach_name is only a
+# label, and Transfermarkt re-spells it from time to time. Ivan Juric became
+# "Ivan Jurić" on his 2025/26 page while all nine earlier stints still said
+# "Ivan Juric" — and because compute_coach_stats() groups by (coach_id,
+# coach_name), that split one career into a 9-stint row and a 1-stint row, gave
+# him two entries in coach_ranked_*, and crashed se_rating_cut() on a
+# length-2 vector. fit_mixed_model() groups by coach_id alone, so the BLUP
+# table was fine and the two disagreed.
+#
+# Canonical = the spelling used for the most recent stint, so a name change on
+# Transfermarkt propagates rather than being pinned to the oldest record.
+xx_canonical_coach_names <- function(coaches) {
+  canon <- coaches |>
+    dplyr::filter(!is.na(coach_id), !is.na(coach_name)) |>
+    dplyr::arrange(dplyr::desc(date_from)) |>
+    dplyr::distinct(coach_id, .keep_all = TRUE) |>
+    dplyr::select(coach_id, canon_name = coach_name)
+  n_fixed <- coaches |>
+    dplyr::distinct(coach_id, coach_name) |>
+    dplyr::count(coach_id) |>
+    dplyr::filter(n > 1) |>
+    nrow()
+  if (n_fixed > 0) {
+    message("  canonicalised ", n_fixed, " coach id(s) carrying more than one name spelling")
+  }
+  coaches |>
+    dplyr::left_join(canon, by = "coach_id") |>
+    dplyr::mutate(coach_name = dplyr::coalesce(canon_name, coach_name)) |>
+    dplyr::select(-canon_name)
+}
+
 build_coach_residuals <- function(residuals_tbl, min_coverage = 80) {
-  coaches <- xx_data_cache$coaches
+  coaches <- xx_canonical_coach_names(xx_data_cache$coaches)
   matches <- xx_data_cache$matches
 
   residuals_filtered <- xx_filter_value_coverage(residuals_tbl, min_coverage = min_coverage)

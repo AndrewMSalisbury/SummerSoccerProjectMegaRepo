@@ -86,7 +86,7 @@ league_season_correlations <- function(league_season_id) {
 all_correlations <- function(){  
   correlation_sheet <- data.frame()
   for(league_id in xx_all_leagues()) {
-    for(season in 2015:2024) {
+    for(season in 2015:xx_last_data_season) {
       league_season_id <- xx_league_season_id(league_id, season)
       lsc <- league_season_correlations(league_season_id)
       lsc$league <- strsplit(league_season_id, split = "/")[[1]][4]

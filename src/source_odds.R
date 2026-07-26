@@ -85,7 +85,7 @@ od_raw_download <- function(div, format, season_start_year = NULL, sleep = 1) {
 # main leagues: one file per season. new leagues: one combined file (season
 # range ignored, downloaded once). Idempotent — skips files already cached
 # unless force = TRUE.
-od_data_populate <- function(seasons = 2005:2024, force = FALSE) {
+od_data_populate <- function(seasons = 2005:xx_last_data_season, force = FALSE) {
   if (!dir.exists(od_cache_dir)) dir.create(od_cache_dir, recursive = TRUE)
   log <- list()
   for (i in seq_len(nrow(od_leagues))) {

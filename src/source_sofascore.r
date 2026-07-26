@@ -59,33 +59,37 @@ ss_pl_season_ids <- c(
   "2021" = 37036,
   "2022" = 41886,
   "2023" = 52186,
-  "2024" = 61627
+  "2024" = 61627,
+  "2025" = 76986
 )
 
 # Season ids for the other big-5 leagues, discovered from the
 # /unique-tournament/{ut}/seasons endpoint on 2026-07-09 and smoke-tested
 # (2015/16 season statistics confirmed present for all four).
+# 2025/26 ids added 2026-07-25 from the same endpoint; the 2024/25 ids it
+# returned matched these constants exactly, which is the check that the id
+# convention still holds.
 ss_big5_leagues <- list(
   premier_league = list(ut = ss_ut_PREMIER_LEAGUE, seasons = ss_pl_season_ids),
   la_liga = list(ut = ss_ut_LA_LIGA, seasons = c(
     "2015" = 10495, "2016" = 11906, "2017" = 13662, "2018" = 18020,
     "2019" = 24127, "2020" = 32501, "2021" = 37223, "2022" = 42409,
-    "2023" = 52376, "2024" = 61643
+    "2023" = 52376, "2024" = 61643, "2025" = 77559
   )),
   serie_a = list(ut = ss_ut_SERIE_A, seasons = c(
     "2015" = 10596, "2016" = 11966, "2017" = 13768, "2018" = 17932,
     "2019" = 24644, "2020" = 32523, "2021" = 37475, "2022" = 42415,
-    "2023" = 52760, "2024" = 63515
+    "2023" = 52760, "2024" = 63515, "2025" = 76457
   )),
   bundesliga = list(ut = ss_ut_BUNDESLIGA, seasons = c(
     "2015" = 10419, "2016" = 11818, "2017" = 13477, "2018" = 17597,
     "2019" = 23538, "2020" = 28210, "2021" = 37166, "2022" = 42268,
-    "2023" = 52608, "2024" = 63516
+    "2023" = 52608, "2024" = 63516, "2025" = 77333
   )),
   ligue_1 = list(ut = ss_ut_LIGUE_1, seasons = c(
     "2015" = 10373, "2016" = 11648, "2017" = 13384, "2018" = 17279,
     "2019" = 23872, "2020" = 28222, "2021" = 37167, "2022" = 42273,
-    "2023" = 52571, "2024" = 61736
+    "2023" = 52571, "2024" = 61736, "2025" = 77356
   ))
 )
 
@@ -94,6 +98,10 @@ ss_big5_leagues <- list(
 ss_big5_season_ids <- function(leagues = ss_big5_leagues) {
   unlist(lapply(leagues, function(l) l$seasons))
 }
+
+# Seasons covered by the SofaScore caches (also defined in player_archetypes.R,
+# which mirrors the id table for chromote-free analysis sessions).
+ss_seasons <- function() as.integer(names(ss_pl_season_ids))
 
 ss_cache_dir <- "data/cache/sofascore"
 

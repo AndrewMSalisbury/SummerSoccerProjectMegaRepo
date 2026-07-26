@@ -23,7 +23,7 @@ source("coach_recommender.R")   # -> the coach_fit.R chain (pa_read,
 # Coverage: big-5 only, 2015/16-2024/25 (SofaScore match_stats). Coaches seen
 # only outside the big 5 get Layer A but no fingerprint — say so, don't fabricate
 # a radar (design sec. 8).
-sy_seasons <- 2015:2024
+sy_seasons <- ss_seasons()
 
 # --- data facts, all verified 2026-07-16 (do not re-derive from the docs) -----
 #

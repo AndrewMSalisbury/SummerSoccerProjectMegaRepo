@@ -291,13 +291,13 @@ cf_share_cols <- function(tbl) {
 # skips the slow model rebuild when iterating.
 cf_build_analysis_table <- function(composition, coach_residuals = NULL) {
   if (is.null(coach_residuals)) {
-    dataset       <- build_model_dataset(2005:2024)
+    dataset       <- build_model_dataset(2005:xx_last_data_season)
     residuals_tbl <- compute_residuals(dataset)
     coach_residuals <- build_coach_residuals(residuals_tbl)
   }
 
   pl_stints <- coach_residuals |>
-    filter(league %in% cf_tm_league_names(), season %in% 2015:2024,
+    filter(league %in% cf_tm_league_names(), season %in% ss_seasons(),
            !is.na(partial_residual_ppg)) |>
     # guard: build_coach_residuals() dedupes tenure brackets itself since
     # 2026-07-10; kept as a no-op safety net (earliest date_from per
@@ -311,7 +311,8 @@ cf_build_analysis_table <- function(composition, coach_residuals = NULL) {
     mutate(club_id = gsub("/saison_id/\\d+$", "", team_season_id))
 
   cat(sprintf(
-    "Big-5 stints 2015-2024: %d | joined to composition: %d | game-count agreement r = %.3f\n",
+    "Big-5 stints %d-%d: %d | joined to composition: %d | game-count agreement r = %.3f\n",
+    min(pl_stints$season), max(pl_stints$season),
     nrow(pl_stints), nrow(tbl), cor(tbl$n_games, tbl$ss_games)
   ))
   tbl

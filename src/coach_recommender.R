@@ -972,8 +972,8 @@ cr_score_team <- function(scorer, team_season_id, league_key,
 #   R0 = enhanced_fixed (trained without the fold), R1-R3 as above minus the
 #   deployment term (deployment is already inside realized weighted value).
 cr_payoff_validation <- function(scorer, dataset = NULL,
-                                 seasons = 2016:2024) {
-  if (is.null(dataset)) dataset <- build_model_dataset(2005:2024)
+                                 seasons = 2016:xx_last_data_season) {
+  if (is.null(dataset)) dataset <- build_model_dataset(2005:xx_last_data_season)
   tbl <- cr_add_axes(scorer$tbl)
   cfm <- scorer$coach_formations |>
     mutate(club_id = gsub("/saison_id/\\d+$", "", team_season_id))

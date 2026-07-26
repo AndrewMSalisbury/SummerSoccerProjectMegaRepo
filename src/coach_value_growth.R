@@ -82,7 +82,7 @@ cvg_position_group <- function(pos) {
 # boundaries; value_t below `min_value` (TM's noisy valuation floor) is dropped
 # because a tiny denominator inflates g without signal.
 cvg_build_player_seasons <- function(cut = c("top5", "14league"),
-                                     seasons   = 2005:2024,
+                                     seasons   = 2005:xx_last_data_season,
                                      min_value = 25000) {
   cut <- match.arg(cut)
 
@@ -280,7 +280,7 @@ cvg_save_residuals <- function(fit, cut, results_dir = "data/results") {
 # Runs Phase 1 end to end for one cut: base table -> baselines -> confound
 # checks -> face validity -> save. Deliverable: player_dev_residuals_<cut>.rds.
 cvg_run_phase1 <- function(cut = c("top5", "14league"),
-                           seasons     = 2005:2024,
+                           seasons     = 2005:xx_last_data_season,
                            min_value   = 25000,
                            results_dir = "data/results",
                            save        = TRUE) {
@@ -428,7 +428,10 @@ cvg_fit_cde <- function(attr_tbl, response = "dev_resid",
   blups <- data.frame(coach_id = rownames(re), cde = re[, 1],
                       stringsAsFactors = FALSE) |>
     left_join(coach_tot, by = "coach_id") |>
-    left_join(attr_tbl |> distinct(coach_id, coach_name), by = "coach_id") |>
+    # one row per id: a coach_id carrying two name spellings would make this a
+    # one-to-many join and duplicate his BLUP row (see xx_canonical_coach_names)
+    left_join(attr_tbl |> distinct(coach_id, coach_name) |>
+                group_by(coach_id) |> slice(1) |> ungroup(), by = "coach_id") |>
     mutate(n_clubs = NA_integer_) |>
     arrange(desc(cde))
 
@@ -573,7 +576,7 @@ cvg_save_cde <- function(cde_tbl, stints, cut, results_dir = "data/results") {
 # value jumps and a survivorship tilt, so they are a robustness pass, not the
 # headline sample.
 cvg_build_movers <- function(cut = c("top5", "14league"),
-                             seasons = 2005:2024, min_value = 25000) {
+                             seasons = 2005:xx_last_data_season, min_value = 25000) {
   cut <- match.arg(cut)
   cut_ts <- build_model_dataset(seasons, leagues = cvg_cut_leagues(cut)) |>
     select(team_season_id, team_name, league, season)
@@ -698,7 +701,7 @@ cvg_run_phase2 <- function(phase1,
 
 # Full pipeline for one cut: Phase 1 then Phases 2-4 + validation.
 cvg_run_all <- function(cut = c("top5", "14league"),
-                        seasons = 2005:2024, results_dir = "data/results",
+                        seasons = 2005:xx_last_data_season, results_dir = "data/results",
                         save = TRUE, run_movers = TRUE) {
   cut <- match.arg(cut)
   p1 <- cvg_run_phase1(cut, seasons = seasons, results_dir = results_dir, save = save)

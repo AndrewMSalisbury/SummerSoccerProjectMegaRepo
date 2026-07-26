@@ -55,11 +55,13 @@ The 14 active leagues are: Premier League, La Liga, Ligue 1, Serie A, Bundesliga
 
 ### SofaScore Data Layer (`src/source_sofascore.r`, `src/sofascore_crosswalk.r`)
 
-Added for the Milestone 6 coach/player-type fit analysis. Functions use the `ss_` prefix with the same two tiers as `source_data.r`: `ss_raw_*` scrapes, `ss_data_*` reads the RDS cache first. Caches live in `data/cache/sofascore/`, one file per SofaScore season id (the PL 2015/16–2024/25 ids are in `ss_pl_season_ids`; all big-5 league ids are in `ss_big5_leagues`).
+Added for the Milestone 6 coach/player-type fit analysis. Functions use the `ss_` prefix with the same two tiers as `source_data.r`: `ss_raw_*` scrapes, `ss_data_*` reads the RDS cache first. Caches live in `data/cache/sofascore/`, one file per SofaScore season id (the PL season ids are in `ss_pl_season_ids`; all big-5 league ids are in `ss_big5_leagues`; 2025/26 ids added 2026-07-26).
 
 **SofaScore rejects plain HTTP clients by TLS fingerprint** (R httr/curl get HTTP 403 regardless of headers), so every request goes through headless Chrome via `{chromote}` — Chrome must be installed. **Politeness is mandatory:** 2–3s jittered sleep per request (lowered from the pilot's 4–7s on 2026-07-09 for the big-5 expansion; steady 2–3.5s was never punished in testing), 90s rest every 250 requests, 10-minute backoff on 403/429, abort after 3 consecutive failures with progress saved (fully resumable). A one-off ~70-request burst once earned a ~24-hour IP block; steady pacing has never been blocked. Never remove these delays; if a run starts hitting 403s, raise the pacing back to 4–7s before resuming. Only HTTP 404 is recorded as permanently missing; other failures are retried on the next populate run.
 
 SofaScore ids are opaque integers, not URLs — columns holding them are suffixed `_ss_id`. `ss_build_crosswalk(season_ss_id, league_season_id)` in `sofascore_crosswalk.r` links SofaScore player ids to Transfermarkt `player_id` URLs (99.2–100% matched on the pilot; unmatched rows are youth players absent from TM squad pages).
+
+**2025/26 added fields, verified 2026-07-26 (purely additive — nothing was dropped, and every `pa_stat_fields` archetype feature is still present).** Season stats went 110 → 114 (`kilometersCovered`, `numberOfSprints`, `topSpeed`, `outfielderBlocks`); `match_stats` went 76 → 83 (`passValueNormalized`, `dribbleValueNormalized`, `defensiveValueNormalized`, `goalkeeperValueNormalized`, `shotValueNormalized`, `metersCoveredWalkingKm`, `metersCoveredJoggingKm`). That is the whole explanation for `match_stats` jumping 361k → 439k rows in the PL. **Physical/running data is therefore 2025/26-onward only** — do not build a feature on it that needs history. Postponed fixtures appear in `events_*` with `status_type = "postponed"` and `has_player_stats = FALSE` and are correctly skipped by the match populate (PL 2025/26: 381 events, 380 real matches).
 
 Data coverage limits (verified): per-match player statistics, formations, and shot coordinates go back to 2015/16; **xG exists from mid-2021/22** (complete from 2022/23); per-pass/dribble coordinate charts (`ss_raw_player_event_breakdown()`, the `rating-breakdown` endpoint) exist **only from 2025/26** and are not part of the pilot dataset.
 
@@ -82,6 +84,18 @@ Builds on the data layer to produce per-team metrics and model comparisons:
 
 The `weighted_team_value` formula: for each player, `player_market_value_euro × percent_minutes_played`, summed per team. When a team has no minutes data (weighted value = 0), the value is imputed from a within-season regression against `total_team_value`.
 
+**`coach_id` is the identity; `coach_name` is only a label — never group by both.**
+Transfermarkt re-spells names between seasons (Ivan Juric → "Ivan Jurić" on his 2025/26
+page, same profile URL). `compute_coach_stats()` used to group by `(coach_id, coach_name)`
+and split that career into two ranked rows while `fit_mixed_model()`, which groups by
+`coach_id` alone, kept one — the two tables disagreed about who existed, and the export
+crashed on a length-2 vector in `se_rating_cut()`. `xx_canonical_coach_names()` (applied
+inside `build_coach_residuals()`, so every downstream layer inherits it) resolves each id
+to its most-recent spelling; `compute_coach_stats()` now groups by id only. A
+`distinct(coach_id, coach_name)` join is the same trap in one-to-many form — it duplicates
+stint rows instead of crashing (fixed in `cs_build_team_xg()`). Expect this to recur: any
+season can re-spell any name.
+
 Later milestones build on this in a source chain — `coach_attribution.R` → `residual_analysis.R` → `model_comparison.R` → `tabler.R` (with `source_data.r` sourced manually first): `model_comparison.R` (M3, `run_milestone3()`), `residual_analysis.R` (M4, `run_milestone4()`), `coach_attribution.R` (M5, `run_milestone5()`), `augmented_model.R` (coach BLUP CV). All of M5 weights stints by `n_games` (since 2026-07-14): short caretaker stints carry far noisier per-game residuals, and games-weighted BLUPs predicted held-out stints better than unweighted ones. This covers the mixed model, the per-coach mean residuals, and the significance t-tests (which require ≥ 3 stints — df = 1 SEs can collapse when two stints agree by luck). The mixed model's residual variance component is therefore per-game — the recommender's posterior-SD constants in `cr_build_scorer()` must be refreshed whenever M5 is refit. Separately, `save_coach_grades()` applies a **display certification bar** (≥ 109 career games in the cut, or FDR-significant): sub-bar coaches keep their BLUP and stay in the mixed model but get no grade, no leaderboard slot, and no recommender-pool entry (the pool in `cr_score_team()` filters to graded coaches). The bar is presentational — every score-side penalty for thin/selection-flattered records (weight floors, truncation-share and gap penalties) tested worse out-of-sample, so the ranking math must not be "corrected" for it.
 
 ### Coach Strengths Layer (`src/coach_strengths.R`)
@@ -92,7 +106,7 @@ the xG cut is writeup-only, see below). `cs_` prefix, pure
 cache-reader. Splits the M4/M5 overperformance residual into an attacking and a defensive
 half by re-fitting the M3 model with goals-for-per-game / goals-against-per-game as the
 response on the **same right-hand side**, then attributing to coach stints through the M5
-path. Goals-based, so it covers the full 2005–2024 span and all 14 leagues (no SofaScore
+path. Goals-based, so it covers the full 2005–2025 span and all 14 leagues (no SofaScore
 dependency). `run_coach_strengths("top5" | "14league")` runs everything and writes
 `data/results/coach_strengths_<cut>.rds` (per coach: `off_blup`, `def_blup`, `tilt` =
 off − def, `edge` = off + def, plus games-weighted means + FDR significance) and
@@ -116,24 +130,31 @@ goals-against, within-team). Writes `coach_xg_strengths.rds` + `coach_xg_residua
 (no cut suffix — xG is big-5 only). Reads SofaScore shots and joins through
 `cf_season_match_coaches()`. Facts that will bite if forgotten, all verified 2026-07-16:
 
-- **xG era = 2022–2024 only** (`cs_xg_seasons`). 2021/22 is ~40% covered, not "partial but
-  usable", and is excluded; nothing before has xG.
-- **An event counts only if its shotmap reconciles with the scoreline on both sides.** 27 of
-  5,330 xG-era events (0.5%, all 2023) carry ~21 shots but are missing their goal shots —
-  including them understates creation and inflates finishing. A reconciliation check that
-  conditions on events *having* goal shots will not catch this.
+- **xG era = 2022–2025** (`cs_xg_seasons`, now `2022:xx_last_data_season`). 2021/22 is
+  ~40% covered, not "partial but usable", and is excluded; nothing before has xG.
+- **An event counts only if its shotmap reconciles with the scoreline on both sides.**
+  Originally 27 of 5,330 xG-era events (0.5%, all 2023) carried ~21 shots but were missing
+  their goal shots — including them understates creation and inflates finishing. Re-measured
+  2026-07-26 with 2025/26 added: **28 of 7,082 (0.4%)**, i.e. the extra season contributed
+  exactly one, so this is a 2023 defect and not a recurring rate. A reconciliation check that
+  conditions on events *having* goal shots will not catch it.
 - `shots` carries its own `is_home`, so the shooting team comes from the event's home/away
   ids — the `match_stats$team_ss_id` caveat does not apply. **Own goals** sit in the shotmap
   credited to the *benefiting* side, named for the defender, with no xG; they land in
   finishing by construction, which is correct.
-- **3 seasons is a hard ceiling:** 452 stints, 57 coaches with ≥3 stints, none with ≥5,
-  **zero FDR-significant**. Never present this layer as a career verdict; it is a recent-form
-  lens over the big 5 and needs a games bar for any ranking.
-- Repeatability (lag-1, same club): creation 0.42, prevention 0.27, finishing 0.24,
-  shot-stopping −0.005. Finishing persists more than the design assumed (squad continuity,
-  not coach skill) — keep labelling it an unreliable coach signal.
-- Cross-source tie-back (SofaScore xG vs TM goals cut): r = 0.949 / 0.981 over 452 stints.
-  This is the check that breaks first if the SofaScore→TM team map or attribution regresses.
+- **The sample grew and still cannot identify a coach.** 2026-07-26 (4 seasons): 605 stints,
+  310 coaches, 89 with ≥3 stints, 7 now with ≥5 — and **still zero FDR-significant** on all
+  four measures. (Was 452 / 57 / none / zero on 3 seasons.) More data did not manufacture
+  significance, which is the point: never present this layer as a career verdict; it is a
+  recent-form lens over the big 5 and needs a games bar for any ranking.
+- Repeatability (lag-1, same club), 4 seasons / 247 pairs: creation 0.353, prevention 0.275,
+  finishing 0.246, shot-stopping 0.033 (p = 0.61). Creation fell from 0.42 on the 3-season
+  sample; the process-vs-outcome ordering survives, but creation's edge over finishing is
+  narrower than first measured. Finishing persists more than the design assumed (squad
+  continuity, not coach skill) — keep labelling it an unreliable coach signal.
+- Cross-source tie-back (SofaScore xG vs TM goals cut): r = **0.960 / 0.981 over 605 stints**
+  (was 0.949 / 0.981 over 452). This is the check that breaks first if the SofaScore→TM team
+  map or attribution regresses.
 
 ### Coach Style Layer (`src/coach_style.R`)
 
@@ -281,6 +302,20 @@ first. The club signal needs the 14-league sample; top5-only is underpowered.
 The Milestone 6 coach/player-type fit analysis. Pure cache-readers (no scraping, no chromote):
 
 - `player_archetypes.R` (`pa_` prefix) — per-player-season style features from the SofaScore caches (all big-5 leagues) and k-means archetype clustering within D/M/F position groups (11 archetypes, labels in `pa_archetype_labels` — big-5 semantics as of 2026-07-12, incl. the wing-back archetype). `run_archetypes()` rebuilds `data/cache/sofascore/archetypes.rds`. Features are style-only (no goals/ratings/xG) and z-scored within league × season × position group.
+**`pa_archetype_labels` maps CLUSTER INDEX to a semantic name, and k-means indices are
+arbitrary — so re-running `run_archetypes()` on new data can permute them and silently
+mislabel every downstream layer (coach fit, style, recommender, builder, site copy).
+ALWAYS verify after re-clustering:** recover the previous `archetypes.rds`
+(`git show HEAD:src/data/cache/sofascore/archetypes.rds`), join on
+(`player_ss_id`, `season_start_year`), and cross-tabulate old vs new `archetype` within
+each position group. The mapping must be the identity. Verified 2026-07-26 after adding
+2025/26: diagonal agreement 97–100% on all 11 archetypes, indices unchanged (`seed = 6`
+in `pa_kmeans` is what makes this reproducible). If it ever permutes, remap the label
+vector rather than re-running until it happens to line up. The
+`Quick-TRANSfer stage steps exceeded maximum` warnings from `kmeans` are a
+Hartigan–Wong inner-loop budget notice, not non-convergence — `nstart = 25` still picks
+the best of 25 starts.
+
 - `coach_fit.R` (`cf_` prefix) — lagged archetype assignment (cross-league; current-season fallback for players new to the big-5, flagged), minutes-weighted archetype shares per coach stint, join to M5 partial residuals, global mixed model + per-coach tests + strict-lagged sensitivity. `cf_run_analysis()` runs everything; sources `coach_attribution.R`, `player_archetypes.R`, `sofascore_crosswalk.r`. It also owns the SofaScore↔TM↔coach join spine used by the layers above it: `cf_season_match_minutes()` and `cf_season_match_coaches()` (the latter lived in `coach_recommender.R` as `cr_season_match_coaches` until 2026-07-16) — both carry the relegation-playoff filter and the greedy one-to-one team map.
 
 Data conventions that will bite if forgotten: SofaScore **shot coordinates put the attacked goal at (0, 50)** (heatmaps attack toward x = 100); **`match_stats$team_ss_id` is the player's club at scrape time, not the match team** — derive the match side from `is_home` + the event's home/away ids; season stat fields `outfielderBlocks`/`ballRecovery` exist only from 2023/24 and must not be used as features; **one SofaScore team id can carry several name spellings within a season** and league events include relegation playoffs against lower-division clubs — team mapping goes through `ss_crosswalk_team_map()` (greedy one-to-one), never plain best-overlap.
@@ -293,7 +328,7 @@ Answers "who is the best coach for this team?" (design: `Docs/Coach_Recommender_
 
 **The strand's `startable` filter is load-bearing (design §3.3a, added 2026-07-16).** The max-value XI is near formation-invariant (any two of the 22 shapes share 8–10 of 10 outfield starters; on Man City 24 of 36 players start in *no* shape), and `rep_w` sums to 1 — so a player benched in every shape contributes his **full value identically to every coach**. That put a flat "destroyer €40m" on all 81 Man City coaches and made 88.9% of a team's coaches share the same top strand label. `cr_startable_players(squad)` (players making the best XI in **≥1 of the 22 shapes**, computed once per team in `cr_save_results` and passed in) restricts the strand to players some shape would field; top-label agreement fell to 77.8%. **Never narrow that quantifier to the coach's own repertoire** — a player Guardiola benches but Allegri starts *is* stranded by Guardiola, and that contrast is the whole coach-specific signal. Residual ~78% sameness is real (the same expensive attackers genuinely sit outside most shapes) — it is a partial fix, not a solved problem. On squads near the €5m `strand_floor` the strand can now empty entirely (Venezia: 70 of 81 drawers), which is correct — the old numbers there were all depth players — and `team.js` already degrades to a "Natural fits across the pitch…" line. The drawer also carries a **descriptive coach dossier** (added 2026-07-16): `cr_coach_dossier(scorer, coach_ids)` ships per-coach preferred formations (top recency-weighted shapes from `scorer$profiles`), rigidity, career span (first/last season, total games, stints), and clubs coached (14-league history, most recent first) in `recommender.rds$dossier` — restricted to the 81-coach similarity pool to stay lean; `se_coach_dossier()` formats it onto each similar-coach entry as `career`, rendered above the squad-fit section (stat tiles, formation meter bars, club chips). The **coach page** also shows a "Preferred formations" card (`se_coach_formations()` → `coach.js renderFormations`, added 2026-07-16) reading the same dossier — top-5 recency-weighted shapes as meter bars + a rigidity descriptor; only the ~81 pool coaches have it, others omit the card. `cr_coach_dossier` stores 5 formations (the drawer slices to 3).
 
-**Payoff verdict (2026-07-13, binding on what the site presents):** only the quality BLUP is validated out-of-sample on new coach-club pairings (p = 0.016 realized framing); fit + deployment are exploratory and must always be labeled as such. `cr_save_results(scorer, payoff_folds)` writes `data/results/recommender.rds` (per-team suggestions for latest-season big-5 squads + career facts + meta + the `builder` component: the 81-coach similarity-profile pool and the model constants the team-builder page needs — formation slots, eligibility matrices, archetype labels) for the site exporter. Career facts feed the plausibility filter chips; coach nationality comes from `xx_data_populate_coach_nationalities()` in `source_data.r` (resumable TM profile scrape, priority-ordered to ranked coaches; TM intermittently 502s this page type — the populate backs off and can be re-run).
+**Payoff verdict (2026-07-13, binding on what the site presents):** only the quality BLUP is validated out-of-sample on new coach-club pairings (**p = 0.0027** realized framing over 10 LOSO folds 2016-2025; was p = 0.016 over 9 folds before the 2025/26 fold was added on 2026-07-26); fit + deployment are exploratory and must always be labeled as such. `cr_save_results(scorer, payoff_folds)` writes `data/results/recommender.rds` (per-team suggestions for latest-season big-5 squads + career facts + meta + the `builder` component: the 81-coach similarity-profile pool and the model constants the team-builder page needs — formation slots, eligibility matrices, archetype labels) for the site exporter. Career facts feed the plausibility filter chips; coach nationality comes from `xx_data_populate_coach_nationalities()` in `source_data.r` (resumable TM profile scrape, priority-ordered to ranked coaches; TM intermittently 502s this page type — the populate backs off and can be re-run).
 
 ### Market Benchmark Layer (`src/source_odds.R`, `src/market_benchmark.R`)
 
@@ -307,9 +342,9 @@ leakage-free walk-forward match forecaster tested against bookmaker **closing od
   closing probs. 13 of 14 site leagues (11 in the main `mmz4281/<SSSS>/<div>.csv` files —
   E0→GB1, E1→GB2, SP1→ES1, SP2→ES2, I1→IT1, D1→L1, F1→FR1, P1→PO1, N1→NL1, B1→BE1, T1→TR1;
   Denmark/Poland are `new/`-format combined files, **not yet wired**; Croatia absent).
-  `od_data_populate(2012:2024)` caches ~143 CSVs (idempotent). Odds coalesce Pinnacle
+  `od_data_populate(2012:xx_last_data_season)` caches ~154 CSVs (idempotent). Odds coalesce Pinnacle
   closing (PSC) → Pinnacle (PS) → Bet365 closing → Bet365; **PSCH/D/A is present in every
-  2012–2024 file** — 51,807 matches, 99.9% Pinnacle-closing.
+  2012–2025 file** — 51,977 matches through 2025/26, 99.9% Pinnacle-closing.
 - **The crosswalk is load-bearing and verified by reconciliation, not name score.**
   football-data uses stable abbreviations ("Ath Madrid", "Sp Lisbon"), so `od_build_matches`
   maps names by a **within-season greedy one-to-one assignment** (the ~20 clubs are a
@@ -340,10 +375,11 @@ leakage-free walk-forward match forecaster tested against bookmaker **closing od
   valuation has absorbed in-season results. Do not present the current-value numbers (incl.
   its favourite-side P&L edge) as real.
 - **Verdict — a clean null (binding).** Leakage-free: the forecaster is strictly worse than
-  the closing line (log-loss 1.014 vs 0.978, market better in all 11 leagues) and adds
-  nothing beyond it — value p = 0.31, **coach BLUP p = 0.51**, and p = 0.32 even in the
-  pre-declared low-profile-manager subgroup; P&L −6.4% ROI at closing (CI excludes 0),
-  −9.9% at achievable prices. The market already prices both squad value and coaching
+  the closing line (log-loss 1.015 vs 0.979, market better in all 11 leagues) and adds
+  nothing beyond it — value p = 0.29, **coach BLUP p = 0.96**, and p = 0.68 even in the
+  pre-declared low-profile-manager subgroup; P&L −6.6% ROI at closing (CI [−8.2%, −5.1%],
+  excludes 0), −7.8% at achievable prices. (Refreshed 2026-07-26 with 2025/26 folded in:
+  every p moved further from significance, so the null got more secure, not less.) The market already prices both squad value and coaching
   quality. **The coach term would not stably fit *inside* the DC goal model** (collinear
   with value, sign-flipping, b ∈ ~[0,1.2]) — so the forecaster is value+home and the coach
   is tested as a separate incremental signal, not as forecast skill. **No site surface** —
@@ -400,21 +436,60 @@ test (Part 11b, p=0.0024). Re-run all three savers after any M4/M5 refit before 
 
 A static presentation site lives in `site/` at the repo root — the one place the R code writes outside `src/data/` (it is a publishing target, not analysis data). Design: `Docs/Website_Design.md`; build plan: `Docs/Website_Implementation_Plan.md`.
 
+**THE SEASON KNOB AND THE FROZEN VINTAGE (rewritten 2026-07-26) are binding on
+everything below.** The site displays and **fits** 2005/06–**2025/26**; there is no
+held-out season on the site any more. `xx_last_data_season` (source_data.r) is the single
+knob — every analysis layer's season default derives from it, and `se_fit_last_season`
+tracks it. `src/refit_pipeline.R` (`rp_`, new) is the runnable M3→M4→M5 driver that
+replaced the prose recipe in `Docs/Session_Log_2026-07-10b.md`; `run_refit()` writes
+`residuals_*`, `coach_residuals_*`, `coach_ranked_*`, `coach_blups_*` for both cuts and
+calls `save_coach_grades()`. It was verified to reproduce the pre-existing hand-run
+results bit-identically when pinned to ≤2024 (14-league max |numeric delta| = 0; top5
+≤1e-11, lme4 optimizer noise).
+
+**What makes refitting safe is that the forward test no longer reads the live pipeline.**
+`forward_test.R` reads `coach_blups_14league_asof2024.rds` — a byte snapshot of the M5
+BLUPs as of the 2024 fit — via `ft_blup_vintage`, not `coach_blups_14league.rds`. Its Q1
+M3 fit was always self-contained (`season < ft_holdout_season` off `mb_prep`, now with an
+explicit dedupe filter because `mb_prep$ds` itself spans the holdout year). Verified
+2026-07-26: after the full 2025/26 refit, `run_forward_test()` still prints 5,080 train
+rows, R² 0.721, slope +1.896, **p = 0.0024**, graded-only p = 0.0036 — identical to
+published. **Never point `ft_blup_vintage` at the live BLUP file, and always take the
+next snapshot BEFORE refitting** (`rp_check_vintage()` fails the refit if it is missing).
+
+**The honesty cost, and where it is paid.** The grades on coach pages are now a *later
+vintage* than the ones test 3 validated — they have since absorbed the tested season. The
+"Does it work?" test-3 card therefore carries a `vintage` line
+(`se_export_validation()` → `fwd$graded_through` / `site_graded_through` /
+`vintage_differs`, rendered by `valCard`), and `How_It_Works.md` §"What the model has
+seen" explains the scrape → score → fold-in cycle. Without those the site implies the
+displayed grade was the one held out, which it is not. `se_export_validation()` derives
+the tested season from `ft$holdout$season`, never from a site constant, so the page keeps
+describing what that run actually did after the fit window moves past it.
+
+**To roll forward a year:** `xx_data_populate_league_seasons(<yr>)` +
+`ss_data_populate_big5(start_years="<yr>")` (add the season ids to `ss_big5_leagues` and
+the `player_archetypes.R` mirror — they must not drift), rebuild `ds_<yr>.rds`, snapshot
+`coach_blups_14league_asof<yr-1>.rds`, bump `xx_last_data_season`, `run_refit()`, re-run
+the downstream layers, then `run_forward_test()` with `ft_holdout_season`/
+`ft_blup_vintage` bumped.
+
 - `export_site_data()` (`se_` prefix, working dir `src/`) regenerates everything under `site/data/` (per-coach/team/league JSON keyed by TM numeric ids, leaderboard, search index, meta), `site/assets/` (coach images + club crests copied from `data/images/`), and `site/writeup.html` (converted via `{commonmark}` from **`Docs/How_It_Works.md`** — the plain-language guide, since 2026-07-23; it was `Docs/Summary_of_Findings.md` before that). It wipes and rebuilds those paths; never edit them by hand. Hand-written files (`*.html` except writeup, `css/`, `js/`, `img/`) are never touched.
 - **The logo lives in `site/img/logo.svg`, deliberately not `site/assets/`** (which is wiped on every export). It is the "Residual S" mark — two tapered wedges, the lower one the upper rotated 180°, filled with the two masthead-gradient stops. That file is the **favicon** (linked from every page's `<head>`, including the writeup template in `se_write_writeup()`). On-page uses are **inline SVG instead**, via `logoMark(size)` in `components.js` (header lockup at 18px, home hero at 46px): an external `<img>` cannot read `--series-1`/`--series-2`, so it would not track the light/dark theme the way the mark it replaced did.
 - **`Summary_of_Findings.md` therefore has no published surface.** The convention "a null lives in the writeup, not on the site" (xG cut, Layer C, CDE Part 9, market benchmark Part 10) now means *documented in the repo*, not *reachable by a reader* — the site's honesty gradient survives in `How_It_Works.md` ("How much to trust each number", "What the model does not do"), the statistics do not. Site copy links to `writeup.html` as "how it works" with **no part anchors**; do not add deep links to writeup parts unless the technical document is republished as its own page. `Docs/Website_Design.md` still describes the writeup page as-designed (a `Summary_of_Findings` rendering) and is stale on this point.
 - Export inputs: `data/results/*.rds` — including `coach_grades_*.rds` (written by `save_coach_grades()` in `coach_attribution.R`), `archetype_fit.rds` (written by `cf_save_results()` in `coach_fit.R`), `coach_strengths_{top5,14league}.rds` + `coach_style.rds` (the descriptive profile, below), and `recommender.rds` (written by `cr_save_results()` in `coach_recommender.R` — feeds the team-page "Suggested coaches" section; teams without an entry get a note card). Re-run those savers after re-running M5/M6/recommender before exporting.
 - **Descriptive profile on coach pages** (phase 6, shipped 2026-07-16, design `Docs/Coach_Descriptive_Profile_Design.md` §6): two cards, both **gated by the honesty label of their layer, not by what the data allows**:
-  - "Where his edge comes from" (`se_coach_strengths()` → `coach.js renderStrengths` → `charts.js strengthBars`) — the Layer A goals cut. Read from the **same cut as the headline grade** and shown **only for graded coaches** (545): it re-slices the BLUP, so it inherits the grade's display certification bar rather than inventing its own. `STRENGTH_DOMAIN` (±0.26 goals/game) is a **fixed** x domain shared by both rows and every coach — defence bars are visibly shorter than attack for nearly everyone because the coach effect really is stronger on goals scored (LRT χ² = 160 vs 60); do not give the rows separate axes to "fix" it. `edgeNote()` fires when the goal edge and the BLUP disagree in sign (Simeone: B grade, −0.03 goal edge) — without it the lede flatly contradicts the grade card above it.
+  - "Where his edge comes from" (`se_coach_strengths()` → `coach.js renderStrengths` → `charts.js strengthBars`) — the Layer A goals cut. Read from the **same cut as the headline grade** and shown **only for graded coaches** (566 as of the 2025/26 refit): it re-slices the BLUP, so it inherits the grade's display certification bar rather than inventing its own. `STRENGTH_DOMAIN` (±0.26 goals/game) is a **fixed** x domain shared by both rows and every coach — defence bars are visibly shorter than attack for nearly everyone because the coach effect really is stronger on goals scored (LRT χ² = 160 vs 60); do not give the rows separate axes to "fix" it. `edgeNote()` fires when the goal edge and the BLUP disagree in sign (Simeone: B grade, −0.03 goal edge) — without it the lede flatly contradicts the grade card above it.
   - "Style of the teams he coached" (`se_coach_style()` → `renderStyle` → `styleBars`) — Layer B, for the 256 coaches with ≥ `se_style_min_games` (38) of big-5 style data. Carries a separate inset **pressing-height block** (`renderPressingHeight` → `charts.js spectrumBar`, a named-pole percentile scale "Deep block ↔ High press"): it is inset because it is measured per *season*, not per match, so unlike the nine axes it cannot always be pinned to the coach rather than his club (`blended` flag, 56 of 256). **Do not draw it on a pitch** — the stat is the share of possession won in the attacking third *ranked against other coaches*, so a marker at a pitch position would claim a physical location the data does not contain. **Percentile, never raw SD** (design §3.3: coach means compress toward 0, so raw SD renders every fingerprint flat); percentiles are ranked *within* the same ≥38-game set that is displayed, so they differ slightly from the ≥100-game percentiles quoted in the design doc/session logs. **One hue, not the site's pos/neg pair** — these axes have no good/bad polarity and the diverging ramp would invent a verdict. The title, the `coach_owned` dots (lineup stability + pressing intensity only) and the footnote are all load-bearing per design §5: club identity beats coach on 7 of 9 axes, so the card may never say "his style".
   - **The xG cut and Layer C are deliberately absent.** xG is 3 big-5 seasons with zero FDR-significant coaches — a recent-form lens a coach page would flatten into a career verdict. Layer C is a null; its raw correlations must never render as findings. Both live in the writeup (Part 8) instead.
+- **After every export, run `src/site_render_check.R`** (`src_render_check()`, needs `python -m http.server 8899` in `site/`). It exists because a deleted-but-still-referenced variable in `coach.js` threw a **ReferenceError inside `renderChartCard()` on 2026-07-26**, so the coach page rendered its header/subtitle/stat tiles and then silently appended nothing — no career chart, strengths, style, formations or fit. Nothing caught it: the throw is inside an unhandled async `init()` so **no console error appears**, `node --check` passes (ReferenceError is a runtime error), and the old smoke test only asserted `innerText > 200 chars` — which 777 characters of half-rendered page clears. The checker therefore installs `error` + **`unhandledrejection`** handlers *before* page scripts evaluate and asserts a **per-page minimum card count**. When a page gains a card, raise its `min_cards`: the numbers are a contract, not a guess.
 - **jsonlite gotcha:** the export uses `auto_unbox = TRUE`, so any vector that can be length 1 but must stay a JSON array needs `I()` (see `leagues`, `seasons` in the exporters) or the frontend crashes on `.join`/iteration.
 - Club crests: `xx_raw_team_crest()` / `xx_data_populate_team_crests()` in `source_data.r` download from the TM image CDN (`wappen/head/<id>.png` — no page scrape). 404 on both URL variants is recorded as permanently missing in `data/cache/team_crests.rds`; transient failures (including empty 200s) retry on the next run. All 496 active-league clubs are downloaded.
 - The frontend is dependency-free vanilla JS (ES modules, hand-rolled SVG charts, light/dark via CSS custom properties). Pages fetch JSON, so serve the folder (`python -m http.server` in `site/`) rather than opening `file://`. Grades never render without their cut label ("Top-5 leagues" / "All leagues") — the two cuts use separate grading curves.
 - **Team builder** (`site/builder.html` + `js/builder.js`, design: `Docs/Team_Builder_Design.md`): build a custom XI on a drawn pitch (any of the 22 formations, click-to-pick from all big-5 player-seasons 2015/16–2024/25) and get the similarity-based coach suggestions computed client-side — cosine similarity on archetype shares + the 85/15 quality blend, numerically identical to `se_suggestions()` (verified against an R fixture). `se_export_builder()` writes `site/data/builder/{players,coaches,meta}.json`; formation pitch coordinates live in `se_formation_layouts` (site_export.R) and are validated against `cr_formation_slots` at export. Player photos: `xx_raw_player_image_url()` / `xx_data_populate_player_images()` in `source_data.r` (resumable, priority-ordered by career minutes, NULL/NA fetch-vs-missing semantics like the nationality scraper; lookup `data/cache/player_images.rds`, files `data/images/players/<id>`). The builder never shows predicted points for a fantasy XI (outside the M3 model's support) and carries the same descriptive-similarity labeling as team pages.
 - **Fan/validation surfaces** (Parts 11–12, shipped 2026-07-22): the deserved table rides on the existing league standings as a "Deserved" column (expected rank + position swing, `se_export_leagues`); `site/players.html` + `js/players.js` (`se_export_players()`) is the player-development leaderboard; `site/validation.html` + `js/validation.js` (`se_export_validation()`) is the "Does it work?" report card (forward test + event study + the Part-7 payoff). Both new pages are linked from the header nav in `components.js`.
   - The players page leads with **`charts.js growthCurves()`** — the CDE baseline as an age curve per position, i.e. the expectation the leaderboard's residual is measured against. `se_growth_curves()` **refits the CDE-total baseline from `player_dev_residuals_<cut>.rds`** (every RHS column is in that file) and **asserts it still reproduces the stored `pred_total`** — the check that fires if `cvg_fit_baselines()`'s spec ever changes. Curves are **standardized (g-computation)**: age and position are overwritten on a fixed sample of real player-seasons, so a position gap is an age × role effect and not a price-mix difference; the consequence to keep in the footnote is that the curve runs *below* what real teenagers average, because they also start cheaper.
-  - The validation page's lede is the **three-validation block** (`renderValidations()` → `.val-card`): per card, a design-type chip in the eyebrow (out-of-sample forecast / natural experiment / future holdout), the question, a short **"What the test does"** paragraph (the data, the mechanic, what is withheld), the result *in points per 38-game season per SD of grade* with the p-value as a chip, a one-clause caveat, and a plain-language "What this means" + writeup deep link. **Tests 1 and 2 are the pair readers conflate** — both are "does the grade predict hires?" — so the chips separate them and test 2's copy *opens* by naming the difference (test 1 pools appointments across hundreds of clubs; test 2 holds one club fixed across a single swap). Do not compress this back to one line per test: a shorter draft was tried and the two hiring tests became indistinguishable. The "Why it takes three" card carries the point that each design is vulnerable to something the other two are not. Effect sizes are computed at export (`pts_per_sd`), and the Part-7 payoff numbers are derived from `recommender.rds$meta$payoff` — **the published p = 0.016 is the one-sided paired test** across LOSO folds, matching the pre-registered directional acceptance rule (two-sided would be 0.031 — the wrong test, not a stricter one). **Caveats stay on the cards, never demoted to a footnote:** the realized-vs-pre-hire framing (p = 0.052), the confounded grade-*gap* null, and the single-season limit.
+  - The validation page's lede is the **three-validation block** (`renderValidations()` → `.val-card`): per card, a design-type chip in the eyebrow (out-of-sample forecast / natural experiment / future holdout), the question, a short **"What the test does"** paragraph (the data, the mechanic, what is withheld), the result *in points per 38-game season per SD of grade* with the p-value as a chip, a one-clause caveat, and a plain-language "What this means" + writeup deep link. **Tests 1 and 2 are the pair readers conflate** — both are "does the grade predict hires?" — so the chips separate them and test 2's copy *opens* by naming the difference (test 1 pools appointments across hundreds of clubs; test 2 holds one club fixed across a single swap). Do not compress this back to one line per test: a shorter draft was tried and the two hiring tests became indistinguishable. The "Why it takes three" card carries the point that each design is vulnerable to something the other two are not. Effect sizes are computed at export (`pts_per_sd`), and the Part-7 payoff numbers are derived from `recommender.rds$meta$payoff` — **the published p (0.0027 as of the 2025/26 fold) is the one-sided paired test** across LOSO folds, matching the pre-registered directional acceptance rule (two-sided would be 0.0054 — the wrong test, not a stricter one). **Caveats stay on the cards, never demoted to a footnote:** the realized-vs-pre-hire framing, the confounded grade-*gap* null, and the single-season limit. The pre-hire p was **hardcoded at 0.052 in validation.js** until 2026-07-26, when a tenth fold moved it to **0.017**; it is now exported as `payoff$p_prehire` and must never be re-typed into the copy.
   - **"Inside test 3" is two scatters, one per question the forward test asks** (added 2026-07-23), because the section's job is to *show* the result the card above states.
     - `charts.js expectedVsActual()` is **Q1**: all 252 holdout clubs, expected vs actual, against a y = x reference. **Both axes share one domain** (a squashed axis would fake a tighter fit) and the unit is **PPG, never total points**, since the 14 leagues play 22–46 games. Dots take the site's `--pos`/`--neg` pair — a polarity encoding (which side of the line), not a ramp — revalidated in both modes (worst CVD ΔE 21.6 light / 19.2 dark).
     - `charts.js gradeVsOutcome()` is **Q2**: one dot per 2025/26 stint, prior grade against realized overperformance, and it must carry **all three of** the raw stints (**area = games played**, since a 6-game caretaker residual spans ±1.9 PPG against ±1.0 for 10+ games and equal dots would invite reading the noisiest points hardest), the games-weighted fit line, and the **tertile means** — *not* quartiles, whose Q3/Q4 difference (0.117 vs 0.060) sits inside its own SEs and reads as a real dip. **The chart is deliberately unflattering: r = 0.166.** Without the group means a validated result looks like a null; without the "cloud is wide / single dots mean little" footnote the trend line oversells it. Group SEs (~0.03 against a ±1.9 axis) render as 2px stubs, so **error bars are stated in words, never drawn** — do not "restore" them. Only the 219 graded stints are plotted (the 216 first-timers would pile into a stripe at x = 0), so the chart quotes the **graded-only p = 0.0036** and names the headline p = 0.0024 as the all-stints figure — keep those two apart.
@@ -431,9 +506,9 @@ A static presentation site lives in `site/` at the repo root — the one place t
 | `players.rds` | `team_season_id`, `player_id`, `player_name`, `player_age`, `player_position`, `minutes_played`, `percent_minutes_played`, `player_market_value_euro` |
 | `matches.rds` | `league_season_id`, `match_id`, `home_team_id`, `away_team_id`, `home_team_goals`, `away_team_goals` |
 
-Coach data (`coaches.rds` — `team_season_id`, `coach_id`, `coach_name`, `date_from`, `date_to`) is populated for the **full 14-league, 2005–2024 dataset** (13,907 stint rows covering 5,078 of 5,080 team-seasons, ~695–775 stints/yr), plus the 2025/26 forward-test season (470 stints). Verified 2026-07-22 and re-checked 2026-07-24 — the old "5-league, 2015–2024 only" note was stale.
+Coach data (`coaches.rds` — `team_season_id`, `coach_id`, `coach_name`, `date_from`, `date_to`) is populated for the **full 14-league, 2005–2025 dataset** (~14,380 stint rows, ~695–775 stints/yr; 470 in 2025/26). The M5 spine after the 2026-07-26 refit is **5,339 team-seasons, 8,642 stints, 1,006 BLUPs, 566/224 graded (14-league/top-5)** — the old 5,087/8,207/959/545/215 figures are pre-refit.
 
-SofaScore caches (`data/cache/sofascore/`, one file per season id, populated for PL 2015/16–2024/25):
+SofaScore caches (`data/cache/sofascore/`, one file per season id; big-5 2015/16–2024/25 complete, **2025/26 scraping as of 2026-07-26**):
 
 | Cache file | Key columns |
 |---|---|

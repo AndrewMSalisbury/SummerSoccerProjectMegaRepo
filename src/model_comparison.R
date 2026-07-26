@@ -320,7 +320,7 @@ residual_diagnostics <- function(model, dataset, log_transform = TRUE) {
   invisible(flagged)
 }
 
-build_model_dataset <- function(seasons = 2005:2024, min_minutes_pct = 0, leagues = xx_all_leagues()) {
+build_model_dataset <- function(seasons = 2005:xx_last_data_season, min_minutes_pct = 0, leagues = xx_all_leagues()) {
   all_rows <- data.frame()
   for (league_id in leagues) {
     league_name <- strsplit(league_id, split = "/")[[1]][4]
@@ -361,7 +361,7 @@ build_model_dataset <- function(seasons = 2005:2024, min_minutes_pct = 0, league
 # log_transform is pre-decided as TRUE based on the distribution check.
 # run_threshold_check = TRUE rebuilds the dataset with a 10% minutes filter
 # (slow — adds one full build_model_dataset pass).
-run_milestone3 <- function(seasons = 2005:2024,
+run_milestone3 <- function(seasons = 2005:xx_last_data_season,
                            log_transform = TRUE,
                            run_threshold_check = FALSE) {
   sep <- function(title) cat("\n", strrep("=", 60), "\n", title, "\n", strrep("=", 60), "\n\n", sep = "")

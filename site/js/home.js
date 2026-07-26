@@ -1,6 +1,6 @@
 // home.js — hero, dataset stat tiles, top-coach leaderboard, league tiles.
 
-import { loadJSON, el, clear, fmtSigned } from "./data.js";
+import { loadJSON, el, clear, fmtSigned, fmtSeason } from "./data.js";
 import { initHeader, coachImg, statTile, gradeTier, leagueHue, logoMark } from "./components.js";
 
 initHeader();
@@ -54,7 +54,9 @@ async function init() {
 
   main.append(el("p", { class: "footnote", style: "margin-top:28px" },
     `Data: Transfermarkt squad values and results, ${d.first_season}–${d.last_season}; ` +
-    `player-type analysis: SofaScore (big-5 leagues, 2015/16–2024/25). Generated ${meta.generated}.`));
+    "player-type analysis: SofaScore (big-5 leagues). " +
+    `Models are fitted through ${fmtSeason(d.fit_last_season)}. ` +
+    `Generated ${meta.generated}.`));
 }
 
 // Returns [subtitle, card]; the subtitle names the active cut, so grades in the
@@ -77,8 +79,9 @@ function renderLeaderboard(lb) {
     const cut = cuts[cutKey];
     subtitle.textContent =
       `${cut.cut_label} cut, ranked by BLUP (shrunk toward zero when data is sparse). ` +
-      "Grades are a bell curve over ranked coaches. " +
-      "Stints, clubs, and games are full-career totals across all 14 leagues.";
+      "Grades are a bell curve over ranked coaches" +
+      (cut.graded_through ? `, computed on seasons through ${fmtSeason(cut.graded_through)}` : "") +
+      ". Stints, clubs, and games are full-career totals across all 14 leagues.";
     clear(toggle).append(...Object.entries(cuts).map(([k, c]) =>
       el("button", {
         type: "button",

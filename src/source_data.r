@@ -73,6 +73,16 @@ xx_league_id_HNL              <- "https://www.transfermarkt.com/1-hnl/startseite
 xx_league_id_LIGA_MX          <- "https://www.transfermarkt.com/liga-mx/startseite/wettbewerb/MEX1"
 xx_league_id_LALIGA_2         <- "https://www.transfermarkt.com/laliga2/startseite/wettbewerb/ES2"
 
+# The newest completed season in the cache, and the season every model fits
+# through. One knob: the analysis layers take their season ranges from it, so
+# rolling the project forward a year is
+#   xx_data_populate_league_seasons(<yr>) ; bump this ; re-run the chain.
+#
+# NOT the same thing as the forward test's holdout year. forward_test.R scores a
+# season against grades frozen BEFORE it, and carries its own ft_holdout_season
+# plus a frozen BLUP snapshot precisely so that it does not move when this does.
+xx_last_data_season <- 2025
+
 # Returns all 20 supported leagues.
 xx_all_leagues <- function() {
   c(
@@ -226,7 +236,7 @@ xx_data_populate_league_seasons <- function(seasons) {
   }
 }
 
-xx_refresh_match_dates <- function(seasons = 2015:2024) {
+xx_refresh_match_dates <- function(seasons = 2015:xx_last_data_season) {
   leagues <- xx_all_leagues()
   n_total <- length(leagues) * length(seasons)
   n <- 0

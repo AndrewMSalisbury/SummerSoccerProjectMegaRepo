@@ -1,6 +1,6 @@
 // compare.js — side-by-side comparison of two graded coaches.
 //
-// Restricted to the 545 graded coaches: everyone else has no BLUP, no interval
+// Restricted to the graded coaches: everyone else has no BLUP, no interval
 // and no attack/defence split, so a comparison of two of them would be an empty
 // page. Every number on the page is read from ONE cut (the two cuts use
 // separate grading curves, so mixing them would be meaningless) — the toggle
@@ -8,7 +8,8 @@
 
 import { loadJSON, getParam, el, clear, showError, fmtSeason, fmtPpg,
          fmtSigned, fmtPoints } from "./data.js";
-import { initHeader, coachImg, crestImg, gradeTier, statTile } from "./components.js";
+import { initHeader, coachImg, crestImg, gradeTier, statTile,
+         siteMeta } from "./components.js";
 import { careerChart, compareCI, strengthBarsPair, compareStyle, spectrumBar,
          COMPARE_COLORS } from "./charts.js";
 
@@ -36,12 +37,14 @@ async function init() {
   let lb;
   try {
     lb = await loadJSON("data/leaderboard.json");
+    state.ssSpan = (await siteMeta().catch(() => null))?.dataset?.sofascore_span ?? null;
   } catch {
     return showError("Could not load site data. If you opened this file " +
       "directly, serve the site/ folder instead: python -m http.server.");
   }
   // the all-leagues cut ranks every graded coach; the top-5 cut is a subset
   state.index = lb.all14.coaches;
+  state.nCoaches = lb.n_coaches;
   for (const c of state.index) state.byId.set(String(c.id), c);
 
   await Promise.all(SIDES.map(async side => {
@@ -198,7 +201,7 @@ function pickerSlot(side, color) {
 // graded coaches, ordered by rank so typing nothing still shows the best.
 function combobox(side) {
   const input = el("input", { type: "search", autocomplete: "off",
-    placeholder: "Search 545 graded coaches…",
+    placeholder: `Search ${state.index.length.toLocaleString()} graded coaches…`,
     "aria-label": "Search coaches" });
   const results = el("div", { class: "search-results" });
   const wrap = el("div", { class: "cmp-combo search-box" }, input, results);
@@ -261,8 +264,9 @@ function emptyState() {
   const card = el("div", { class: "card" },
     el("p", { style: "margin-top:0" },
       "Pick two coaches above. Both must be graded — a coach needs at least " +
-      "three stints and 109 league games in the dataset before the model will " +
-      "put a number on him, which leaves 545 of the 2,341 in the data."));
+      "three stints and 109 league games in the graded seasons before the model " +
+      `will put a number on him, which leaves ${state.index.length.toLocaleString()} ` +
+      `of the ${state.nCoaches.toLocaleString()} in the data.`));
 
   const top = state.index;
   const quick = [];
@@ -559,7 +563,7 @@ function renderFormations() {
     el("div", { class: "chart-title" }, "Preferred formations"),
     el("div", { class: "chart-sub" },
       "How their matches split across formations, weighted toward recent " +
-      "seasons (SofaScore big-5 data, 2015/16–2024/25)."));
+      `seasons (SofaScore big-5 data, ${state.ssSpan ?? "the big-5 seasons"}).`));
 
   const grid = el("div", { class: "cmp-grid" });
   for (const s of [A, B]) {

@@ -18,6 +18,31 @@ suppressMessages({ library(dplyr) })
 
 ft_results_dir <- "data/results"
 
+# The holdout year, and the last season any input to this test may contain.
+ft_holdout_season <- 2025
+
+# THE VINTAGE FILE — this is what keeps the test honest (added 2026-07-25).
+#
+# Q2 asks whether coach grades computed BEFORE 2025/26 predict what happened IN
+# 2025/26. That only means anything if the grades genuinely never saw the year.
+# Until now this read the live coach_blups_14league.rds, which was <= 2024 only
+# because the whole pipeline stopped there. Once the main chain is refit to
+# include 2025/26 (as it now is, so the site can show that season), the live file
+# contains BLUPs that were partly estimated on the very season this test scores
+# them against — the result would silently become circular while still printing
+# a small p-value.
+#
+# So the test reads a frozen snapshot instead: coach_blups_14league_asof2024.rds
+# is a byte copy of coach_blups_14league.rds taken at the 2024 freeze, i.e. M5
+# fitted on 2005-2024 and nothing else. Re-running run_forward_test() therefore
+# reproduces the published slope +1.90 / p = 0.0024 exactly, no matter what the
+# live pipeline does.
+#
+# WHEN A NEW SEASON IS ADDED: bump ft_holdout_season, refit M5 through the new
+# holdout minus one, and take a FRESH snapshot into
+# coach_blups_14league_asof<year>.rds. Never point this at the live file.
+ft_blup_vintage <- "coach_blups_14league_asof2024.rds"
+
 ft_metrics <- function(actual, pred) {
   ok <- is.finite(actual) & is.finite(pred)
   a <- actual[ok]; p <- pred[ok]
@@ -35,10 +60,17 @@ run_forward_test <- function(save = TRUE) {
   # --- assemble train (<=2024) + 2025 holdout, identical schema/normalization ----
   prep <- readRDS(file.path(ft_results_dir, "mb_prep.rds"))
   ds25 <- readRDS(file.path(ft_results_dir, "ds_2025.rds"))
-  full <- bind_rows(prep$ds |> select(all_of(names(ds25))), ds25)
+  # mb_prep.rds is rebuilt over the full span, so it may itself now carry the
+  # holdout year. Cut it before binding, or the holdout would be duplicated
+  # (and half of it would be the training-side copy).
+  full <- bind_rows(
+    prep$ds |> filter(season < ft_holdout_season) |> select(all_of(names(ds25))),
+    ds25 |> filter(season == ft_holdout_season))
 
-  train <- full |> filter(season <= 2024, norm_weighted_value > 0, norm_total_value > 0)
-  test  <- full |> filter(season == 2025, norm_weighted_value > 0, norm_total_value > 0)
+  train <- full |> filter(season <  ft_holdout_season, norm_weighted_value > 0, norm_total_value > 0)
+  test  <- full |> filter(season == ft_holdout_season, norm_weighted_value > 0, norm_total_value > 0)
+  stopifnot(!any(duplicated(test$team_season_id)),
+            max(train$season) == ft_holdout_season - 1)
   cat(sprintf("Train team-seasons (<=2024): %d   Holdout 2025/26: %d (%d leagues)\n",
               nrow(train), nrow(test), n_distinct(test$league)))
 
@@ -63,8 +95,15 @@ run_forward_test <- function(save = TRUE) {
               mean(abs(test$total_points - test$pred_enh_pts), na.rm = TRUE)))
 
   # --- Q2: do prior (<=2024) coach BLUPs predict 2025 overperformance? -----------
-  cb <- readRDS(file.path(ft_results_dir, "coach_blups_14league.rds")) |>
-    select(coach_id, prior_blup = blup)
+  vintage <- file.path(ft_results_dir, ft_blup_vintage)
+  if (!file.exists(vintage)) {
+    stop("missing BLUP vintage file ", ft_blup_vintage, " — this test must not ",
+         "fall back to the live coach_blups_14league.rds, which now includes ",
+         "the holdout season. See the header comment.")
+  }
+  cb <- readRDS(vintage) |> select(coach_id, prior_blup = blup)
+  cat(sprintf("Prior coach grades from %s (%d coaches, fitted <= %d)\n",
+              ft_blup_vintage, nrow(cb), ft_holdout_season - 1))
 
   res25 <- test |>
     mutate(predicted_ppg = pred_enh,

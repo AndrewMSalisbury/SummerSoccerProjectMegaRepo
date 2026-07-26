@@ -346,7 +346,7 @@ minutes_coverage <- function(residuals_tbl, n = 15) {
 }
 
 # Runs the full Milestone 4 pipeline in order. Returns all results invisibly.
-run_milestone4 <- function(seasons = 2005:2024, log_transform = TRUE, leagues = xx_all_leagues()) {
+run_milestone4 <- function(seasons = 2005:xx_last_data_season, log_transform = TRUE, leagues = xx_all_leagues()) {
   sep <- function(title) cat("\n", strrep("=", 60), "\n", title, "\n", strrep("=", 60), "\n\n", sep = "")
 
   sep("STEP 1: BUILD DATASET & COMPUTE RESIDUALS")

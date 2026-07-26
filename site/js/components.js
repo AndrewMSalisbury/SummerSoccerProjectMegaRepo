@@ -62,13 +62,22 @@ export async function initHeader() {
   initSearch(input, results);
 
   try {
-    const meta = await loadJSON("data/meta.json");
+    const meta = await siteMeta();
     for (const [slug, name] of Object.entries(meta.league_names)) {
       menu.append(el("a", { href: `league.html?id=${encodeURIComponent(slug)}` }, name));
     }
   } catch {
     menu.append(el("a", { href: "index.html" }, "(league list unavailable)"));
   }
+}
+
+// data/meta.json, fetched once per page. Pages read spans and counts from it
+// rather than hard-coding them in copy — the SofaScore span in particular is
+// quoted in four places and went stale the first time a season was added.
+let _metaPromise = null;
+export function siteMeta() {
+  if (!_metaPromise) _metaPromise = loadJSON("data/meta.json");
+  return _metaPromise;
 }
 
 // ---------- theme toggle ----------

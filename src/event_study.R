@@ -38,7 +38,9 @@ es_load <- function(min_asof_cutoff = 2008) {
   prep <- readRDS(file.path(es_results_dir, "mb_prep.rds"))
   asof <- readRDS(file.path(es_results_dir, "mb_asof_blups.rds"))
 
-  need <- setdiff(as.character(min_asof_cutoff:2024), names(asof))
+  # Cutoff s scores hires made in season s against BLUPs fitted on seasons < s,
+  # so covering hires up to the newest season needs a cutoff at that season.
+  need <- setdiff(as.character(min_asof_cutoff:xx_last_data_season), names(asof))
   if (length(need) > 0) {
     message("Computing as-of BLUPs for earlier cutoffs: ", paste(need, collapse = ", "))
     source("market_benchmark.R")

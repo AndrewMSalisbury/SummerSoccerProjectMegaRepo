@@ -20,6 +20,34 @@ library(stringr)
 
 se_site_dir <- "../site"
 
+# --- the fit window, and the one thing it must not break ---------------------------
+#
+# The site fits everything through se_fit_last_season, which tracks the newest
+# scraped season (xx_last_data_season). There is no held-out season on the site:
+# every season shown is a season the models were fitted on.
+#
+# That was NOT true between 2026-07-25 and this change, when 2025/26 was carried
+# as a displayed-but-unfitted holdout year. The reason it could change is that
+# the forward test no longer depends on the live pipeline: forward_test.R reads a
+# frozen BLUP snapshot (coach_blups_14league_asof2024.rds) rather than
+# coach_grades_*/coach_blups_*, so "these grades never saw 2025/26" stays true of
+# the vintage the test scores, whatever the live grades now include.
+#
+# WHAT THIS COSTS, AND WHAT THE SITE OWES THE READER: the grades on coach pages
+# are no longer the grades test 3 validated — they are a later vintage that has
+# since absorbed the test year. The validation page must say so on the test-3
+# card (se_export_validation() -> grade_vintage), or the page implies the
+# displayed number was the one held out, which it was not.
+#
+# ROLLING FORWARD A YEAR: scrape the season, bump xx_last_data_season, re-run
+# refit_pipeline.R, THEN take a fresh coach_blups_14league_asof<yr>.rds snapshot
+# and point ft_blup_vintage at it before re-running the forward test. Snapshot
+# before the refit, never after.
+if (!exists("xx_last_data_season")) {
+  stop("site_export.R needs source_data.r sourced first (for xx_last_data_season).")
+}
+se_fit_last_season <- xx_last_data_season
+
 # league slug (the `league` column in results tables) -> display name
 se_league_names <- c(
   "premier-league"     = "Premier League",
@@ -130,6 +158,15 @@ se_load <- function() {
     d$style$profiles <- p
   }
 
+  # The newest season now arrives in the results tables like any other, because
+  # the pipeline is fitted through it. (It used to be spliced in here from
+  # forward_test.rds, which is why every exporter below still guards on the fit
+  # window rather than assuming it.)
+  stopifnot(max(d$res$season) == se_fit_last_season,
+            max(d$cr$season)  == se_fit_last_season)
+  cat(sprintf("fitted through %s: %d team-seasons, %d coach stints\n",
+              se_season_label(se_fit_last_season), nrow(d$res), nrow(d$cr)))
+
   d$res <- d$res |>
     mutate(
       club_id         = gsub("/saison_id/\\d+$", "", team_season_id),
@@ -213,12 +250,23 @@ se_rating <- function(d, coach_id) {
   headline <- if (!is.null(top5)) top5 else all14
   other <- if (!is.null(top5)) all14 else NULL
   headline$other_cut <- other
+  # the grade is a frozen quantity: it comes from an M5 fit that stops at
+  # se_fit_last_season, so a coach page showing a later stint must say so
+  headline$through_season <- se_fit_last_season
   headline
 }
 
 # --- coach summary paragraph -------------------------------------------------------
 
 se_season_label <- function(season) sprintf("%d/%02d", season, (season + 1) %% 100)
+
+# "2015/16–2025/26" for whatever the archetype cache actually covers.
+se_sofascore_span <- function() {
+  f <- "data/cache/sofascore/archetypes.rds"
+  if (!file.exists(f)) return(NULL)
+  yrs <- sort(unique(readRDS(f)$season_start_year))
+  sprintf("%s–%s", se_season_label(min(yrs)), se_season_label(max(yrs)))
+}
 
 se_coach_summary <- function(name, rating, stints) {
   n_stints <- nrow(stints)
@@ -234,7 +282,12 @@ se_coach_summary <- function(name, rating, stints) {
 
   ok <- stints |> filter(!is.na(partial_residual_ppg), n_games >= 5)
   perf <- ""
-  if (nrow(ok) > 0) {
+  if (nrow(ok) == 1) {
+    # a best-and-worst pair over one stint names the same stint twice
+    perf <- sprintf(
+      " His one scored stint, %s %s, finished %+.2f PPG against squad-value expectation.",
+      ok$team_name, se_season_label(ok$season), ok$partial_residual_ppg)
+  } else if (nrow(ok) > 1) {
     best  <- ok |> slice_max(partial_residual_ppg, n = 1, with_ties = FALSE)
     worst <- ok |> slice_min(partial_residual_ppg, n = 1, with_ties = FALSE)
     perf <- sprintf(
@@ -244,7 +297,7 @@ se_coach_summary <- function(name, rating, stints) {
   }
 
   rate <- if (is.null(rating)) {
-    " Too thin a record for a grade (grading requires at least 3 stints and 109 league games in the dataset)."
+    " Too thin a record for a grade (grading requires at least 3 stints and 109 league games)."
   } else {
     sig <- if (isTRUE(rating$significant))
       " — one of the few coaches statistically significant after FDR correction" else ""
@@ -253,6 +306,7 @@ se_coach_summary <- function(name, rating, stints) {
       rating$letter_grade, rating$numeric_grade, rating$rank, rating$n_ranked,
       rating$cut_label, sig)
   }
+
   paste0(base, rate, perf)
 }
 
@@ -384,7 +438,8 @@ se_export_coaches <- function(d) {
         leagues      = I(unname(se_league_names[unique(stints$league)])),
         n_stints     = nrow(stints),
         total_games  = sum(stints$n_games),
-        n_clubs      = n_distinct(stints$club_num)
+        n_clubs      = n_distinct(stints$club_num),
+        graded_through   = se_fit_last_season
       ),
       rating = rating,
       strengths = se_coach_strengths(d, coach_id, rating),
@@ -722,19 +777,27 @@ se_export_builder <- function(d) {
     filter(!is.na(player_id)) |>
     select(season_ss_id, player_ss_id, player_id)
 
-  leagues <- readRDS("data/cache/leagues.rds")
   teams   <- readRDS("data/cache/teams.rds")
   players <- readRDS("data/cache/players.rds")
-  big5_ls <- leagues |>
-    filter(grepl("wettbewerb/(GB1|ES1|IT1|L1|FR1)/", league_season_id),
-           season_start_year %in% 2015:2024) |>
-    mutate(slug = case_when(
-      grepl("GB1", league_season_id) ~ "premier-league",
-      grepl("ES1", league_season_id) ~ "laliga",
-      grepl("IT1", league_season_id) ~ "serie-a",
-      grepl("L1",  league_season_id) ~ "bundesliga",
-      TRUE                           ~ "ligue-1"
-    ))
+  # League-season ids are CONSTRUCTED from the league constants, not looked up in
+  # leagues.rds. That table is the legacy worldfootballR registry: it stops at
+  # 2024 for our leagues (its only 2025 row is an unrelated Austrian league), and
+  # reading it silently capped the builder's player pool a season behind the rest
+  # of the site — 2025/26 players simply never appeared. Every other layer already
+  # builds ids this way (see xx_league_season_id in source_data.r).
+  b5_codes <- c("premier-league" = xx_league_id_PREMIER_LEAGUE,
+                "laliga"         = xx_league_id_LA_LIGA,
+                "serie-a"        = xx_league_id_SERIE_A,
+                "bundesliga"     = xx_league_id_BUNDESLIGA,
+                "ligue-1"        = xx_league_id_LIGUE_1)
+  big5_ls <- expand.grid(
+      slug = names(b5_codes),
+      # the span the archetype cache actually covers, so a TM season scraped
+      # ahead of its SofaScore counterpart cannot leak in player-less rows
+      season_start_year = sort(unique(arch$season_start_year)),
+      stringsAsFactors = FALSE) |>
+    mutate(league_season_id = xx_league_season_id(unname(b5_codes[slug]),
+                                                  season_start_year))
   big5_players <- players |>
     inner_join(teams |>
                  inner_join(big5_ls |> select(league_season_id,
@@ -1036,7 +1099,10 @@ se_export_leagues <- function(d) {
     })
     names(standings) <- sort(unique(lr$season))
 
+    # every displayed season is a fitted season, so the fit statistics run over
+    # all of them (this filtered out a holdout year until 2026-07-25)
     ok <- lr |> filter(!is.na(residual))
+    ok_fit <- ok
     top_over <- ok |> slice_max(residual_points, n = 5)
     top_under <- ok |> slice_min(residual_points, n = 5)
     season_block <- function(s) lapply(seq_len(nrow(s)), function(i) list(
@@ -1052,10 +1118,13 @@ se_export_leagues <- function(d) {
       id      = slug,
       name    = unname(se_league_names[slug]),
       seasons = I(sort(unique(lr$season))),
+      fit_last_season = se_fit_last_season,
       stats = list(
         n_team_seasons = nrow(lr),
-        r2   = se_num(cor(ok$predicted_ppg, ok$points_per_game)^2),
-        rmse = se_num(sqrt(mean(ok$residual^2))),
+        fit_seasons    = sprintf("%s–%s", se_season_label(min(ok_fit$season)),
+                                 se_season_label(max(ok_fit$season))),
+        r2   = se_num(cor(ok_fit$predicted_ppg, ok_fit$points_per_game)^2),
+        rmse = se_num(sqrt(mean(ok_fit$residual^2))),
         top_overperformers  = season_block(top_over),
         top_underperformers = season_block(top_under),
         top_coaches = lapply(seq_len(nrow(top_coaches)), function(i) list(
@@ -1105,12 +1174,17 @@ se_export_small <- function(d) {
         significant = isTRUE(s$significant)
       )
     })
-    list(cut_label = cut_label, coaches = coaches)
+    list(cut_label = cut_label, coaches = coaches,
+         graded_through = se_fit_last_season)
   }
   # both grading cuts ship; the home page toggles between them (grades from the
   # two cuts sit on separate curves, so each block carries its own cut_label)
   se_write_json(list(top5  = se_lb_cut(d$grades5,  d$ranked5,  "Top-5 leagues"),
-                     all14 = se_lb_cut(d$grades14, d$ranked14, "All leagues")),
+                     all14 = se_lb_cut(d$grades14, d$ranked14, "All leagues"),
+                     # denominator for "N of M coaches are graded" copy, so the
+                     # compare page never carries a hand-typed count that drifts
+                     # when a season is added
+                     n_coaches = n_distinct(d$cr$coach_id)),
                 file.path(se_site_dir, "data/leaderboard.json"))
 
   search <- c(
@@ -1135,7 +1209,15 @@ se_export_small <- function(d) {
       leagues = n_distinct(d$res$league), first_season = min(d$res$season),
       last_season = max(d$res$season), team_seasons = nrow(d$res),
       coaches = n_distinct(d$cr$coach_id), clubs = n_distinct(d$res$club_num),
-      n_graded_top5 = nrow(d$grades5), n_graded_14league = nrow(d$grades14)
+      n_graded_top5 = nrow(d$grades5), n_graded_14league = nrow(d$grades14),
+      # displayed window == fitted window; kept explicit so the frontend never
+      # has to assume the two coincide
+      fit_last_season = se_fit_last_season,
+      # the SofaScore-backed span (player types, style, builder), read from the
+      # archetype cache rather than typed — it lags the Transfermarkt span
+      # whenever a season has been scraped from one source and not the other,
+      # and it was hand-written into four places in the frontend before this
+      sofascore_span = se_sofascore_span()
     ),
     league_names = as.list(se_league_names),
     archetype_global = list(
@@ -1344,13 +1426,19 @@ se_export_validation <- function() {
   }
   es <- readRDS(ef); ft <- readRDS(ff)
 
+  # The season the forward test held out, taken from the test's own output rather
+  # than a constant here — this page describes what that run did, and it must not
+  # drift when the site's fit window moves past it.
+  ft_season <- unique(ft$holdout$season)
+  stopifnot(length(ft_season) == 1)
+
   # forward test ------------------------------------------------------------------
   q1e <- ft$q1_enh; q1b <- ft$q1_base
   q2  <- ft$q2_stint                      # coef matrix; row "prior_blup"
   h   <- ft$holdout
   rmse <- function(a, p) sqrt(mean((a - p)^2, na.rm = TRUE))
   fwd <- list(
-    n_team_seasons = nrow(h), season = "2025/26",
+    n_team_seasons = nrow(h), season = se_season_label(ft_season),
     enh_r2  = se_num(q1e[["R2"]], 3), enh_cor = se_num(q1e[["cor"]], 3),
     enh_rmse = se_num(q1e[["RMSE"]], 3), base_rmse = se_num(q1b[["RMSE"]], 3),
     rmse_edge = se_num(q1b[["RMSE"]] - q1e[["RMSE"]], 4),
@@ -1363,7 +1451,17 @@ se_export_validation <- function() {
     # the slope is PPG per unit of BLUP, which means nothing to a reader — restate
     # it as points over a 38-game season for a coach one SD above average
     pts_per_sd = se_num(q2["prior_blup", 1] *
-                          sd(ft$stints$prior_blup, na.rm = TRUE) * 38, 1)
+                          sd(ft$stints$prior_blup, na.rm = TRUE) * 38, 1),
+    # THE VINTAGE DISCLOSURE. This test scored grades fitted through
+    # ft_holdout_season - 1 against the season after them. The grades on coach
+    # pages are refit through se_fit_last_season and have since absorbed that
+    # season, so they are NOT the numbers this test validated. Without saying so
+    # the card implies the displayed grade was the one held out.
+    # display labels, not years — `graded_through` elsewhere in the export is a
+    # season NUMBER (career/leaderboard), so these are named apart on purpose
+    frozen_at           = se_season_label(ft_season - 1),
+    site_grades_through = se_season_label(se_fit_last_season),
+    vintage_differs     = se_fit_last_season >= ft_season
   )
   dt <- ft$deserved_2025
   tolist <- function(df) lapply(seq_len(nrow(df)), function(i) as.list(df[i, ]))
@@ -1478,10 +1576,16 @@ se_export_validation <- function() {
                   error = function(e) NULL)
   payoff <- if (is.null(pay)) NULL else {
     tt <- t.test(pay$R0, pay$R1, paired = TRUE)
+    # The pre-hire framing (P columns) is the stricter variant the card names as a
+    # caveat. It was hardcoded at p = 0.052 in validation.js until 2026-07-26, when
+    # a tenth LOSO fold moved it to 0.017 — read it from the folds so the caveat
+    # cannot drift away from the test again.
+    tp <- t.test(pay$P0, pay$P1, paired = TRUE)
     list(n_pairings = sum(pay$n_test), n_folds = nrow(pay),
          rmse0 = se_num(mean(pay$R0), 4), rmse1 = se_num(mean(pay$R1), 4),
          folds_improved = sum(pay$R1 < pay$R0),
-         p = signif(tt$p.value / 2, 2))
+         p = signif(tt$p.value / 2, 2),
+         p_prehire = signif(tp$p.value / 2, 2))
   }
 
   out <- list(

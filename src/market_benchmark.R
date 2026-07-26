@@ -31,7 +31,7 @@ mb_results_dir <- "data/results"
 #             it is computed once and each window only swaps in its own
 #             predicted_ppg to form the partial residual.
 # Cached to data/results/mb_prep.rds so the slow player-join build runs once.
-mb_prepare <- function(seasons = 2005:2024, refresh = FALSE) {
+mb_prepare <- function(seasons = 2005:xx_last_data_season, refresh = FALSE) {
   cache <- file.path(mb_results_dir, "mb_prep.rds")
   if (!refresh && file.exists(cache)) return(readRDS(cache))
 
@@ -393,12 +393,13 @@ mb_evaluate <- function(pred) {
 # --- Top-level runner ---------------------------------------------------------
 # value_mode = "prior" is the leakage-free primary (design §3.2); "current" is the
 # leakage-demonstration variant. fitter = mb_fit_dc_glm is the fast, validated fit.
-mb_run <- function(seasons_test = 2013:2024, value_mode = "prior",
-                   fitter = mb_fit_dc_glm, refresh_prep = FALSE, refresh_blups = FALSE) {
+mb_run <- function(seasons_test = 2013:xx_last_data_season, value_mode = "prior",
+                   fitter = mb_fit_dc_glm, refresh_prep = FALSE, refresh_blups = FALSE,
+                   odds_seasons = 2012:xx_last_data_season) {
   prep <- mb_prepare(refresh = refresh_prep)
-  cw   <- od_build_crosswalk(seasons = 2012:2024)
-  mo   <- od_build_matches(seasons = 2012:2024, cw = cw)
-  B    <- mb_asof_blup_tables(prep, seasons = 2012:2024, refresh = refresh_blups)
+  cw   <- od_build_crosswalk(seasons = odds_seasons)
+  mo   <- od_build_matches(seasons = odds_seasons, cw = cw)
+  B    <- mb_asof_blup_tables(prep, seasons = odds_seasons, refresh = refresh_blups)
   feat <- mb_build_features(prep, mo, B, value_mode = value_mode)
   pred <- mb_walkforward(prep, feat, test_seasons = seasons_test, fitter = fitter)
   ev   <- mb_evaluate(pred)

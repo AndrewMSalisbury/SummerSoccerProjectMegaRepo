@@ -3,7 +3,8 @@
 
 import { loadJSON, getParam, el, clear, showError,
          fmtSeason, fmtPpg, fmtSigned, fmtPoints } from "./data.js";
-import { initHeader, coachImg, statTile, seasonSpan, gradeTier } from "./components.js";
+import { initHeader, coachImg, statTile, seasonSpan, gradeTier,
+         siteMeta } from "./components.js";
 import { careerChart, strengthBars, styleBars, spectrumBar } from "./charts.js";
 
 initHeader();
@@ -19,6 +20,9 @@ async function init() {
   } catch {
     return showError(`No coach with id ${id}.`);
   }
+  // the SofaScore-backed span, named in the style/formation/fit copy below
+  const ssSpan = (await siteMeta().catch(() => null))?.dataset?.sofascore_span
+    ?? "the big-5 seasons";
 
   document.title = `${c.name} — Coach Valuation`;
   const main = document.querySelector("main");
@@ -30,8 +34,8 @@ async function init() {
   main.append(renderChartCard(c));
   if (c.strengths) main.append(renderStrengths(c));
   if (c.style) main.append(renderStyle(c));
-  if (c.formations) main.append(renderFormations(c));
-  main.append(renderFit(c));
+  if (c.formations) main.append(renderFormations(c, ssSpan));
+  main.append(renderFit(c, ssSpan));
 }
 
 // Strengths (Layer A, goals cut): the graded overperformance split into an
@@ -204,15 +208,15 @@ function heightLabel(pct) {
 }
 
 // Preferred formations: the coach's recency-weighted formation repertoire
-// (SofaScore big-5 data 2015/16–2024/25; only present for coaches in the pool).
-function renderFormations(c) {
+// (SofaScore big-5 data; only present for coaches in the pool).
+function renderFormations(c, ssSpan) {
   const f = c.formations;
   const card = el("div", { class: "chart-card" });
   card.append(
     el("div", { class: "chart-title" }, "Preferred formations"),
     el("div", { class: "chart-sub" },
       "How his matches split across formations, weighted toward recent seasons " +
-      "(SofaScore big-5 data, 2015/16–2024/25)."));
+      `(SofaScore big-5 data, ${ssSpan}).`));
 
   const list = el("div", { class: "sf-forms" });
   const shapes = f.shapes.filter(s => s.pct >= 1);
@@ -242,7 +246,8 @@ function renderHeader(c) {
   const photo = coachImg(c.img, c.name, "entity-photo");
   const head = el("div", { class: "entity-header" });
 
-  const career = `${c.career.n_stints} stints · ${c.career.n_clubs} ` +
+  const career = `${c.career.n_stints} ` +
+    `${c.career.n_stints === 1 ? "stint" : "stints"} · ${c.career.n_clubs} ` +
     `${c.career.n_clubs === 1 ? "club" : "clubs"} · ${c.career.total_games} games · ` +
     seasonSpan(c.career.first_season, c.career.last_season);
 
@@ -258,11 +263,11 @@ function renderHeader(c) {
       "Compare with another coach →"));
   }
 
-  head.append(photo, main, renderGradeCard(c.rating));
+  head.append(photo, main, renderGradeCard(c.rating, c.career));
   return head;
 }
 
-function renderGradeCard(r) {
+function renderGradeCard(r, career) {
   if (!r) {
     return el("div", { class: "grade-card" },
       el("div", { class: "grade-letter muted" }, "—"),
@@ -283,6 +288,10 @@ function renderGradeCard(r) {
             `${r.other_cut.cut_label}: ${r.other_cut.letter_grade} · ` +
             `rank ${r.other_cut.rank} of ${r.other_cut.n_ranked} · ` +
             `BLUP ${fmtSigned(r.other_cut.blup, 3)}`)
+        : null,
+      career && career.graded_through
+        ? el("div", { class: "muted" },
+            `graded through ${fmtSeason(career.graded_through)}`)
         : null));
   return card;
 }
@@ -373,13 +382,13 @@ function renderDetail(host, s, onClose) {
         `${fmtSigned(s.residual_ppg)} PPG (${fmtSigned(residPts, 1)} pts over the stint)`)))));
 }
 
-function renderFit(c) {
+function renderFit(c, ssSpan) {
   const card = el("div", { class: "chart-card" });
   card.append(el("div", { class: "chart-title" }, "Player-type fit"));
 
   if (!c.archetype_fit) {
     card.append(el("p", { class: "muted" },
-      "N/A — player-type data covers the big-5 leagues 2015/16–2024/25, and this " +
+      `N/A — player-type data covers the big-5 leagues ${ssSpan}, and this ` +
       "coach has fewer than 4 stints there."));
     return card;
   }

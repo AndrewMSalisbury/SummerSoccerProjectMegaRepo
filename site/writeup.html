@@ -20,6 +20,7 @@
 <li><a href="#step-3-the-residual">Step 3 — The residual</a></li>
 <li><a href="#step-4-from-residuals-to-a-coach-number">Step 4 — From residuals to a coach number</a></li>
 <li><a href="#step-5-grades">Step 5 — Grades</a></li>
+<li><a href="#what-the-model-has-seen">What the model has seen</a></li>
 <li><a href="#the-two-cuts">The two cuts</a></li>
 </ul>
 </li>
@@ -72,11 +73,11 @@ and the €4m academy graduate who played every minute did.</p>
 by the share of league minutes he actually played, then summed. It is a measure of the
 value a team <em>put on the pitch</em>, not the value it owned.</p>
 <p>This was the project's original hypothesis, and it holds: minutes-weighted value
-predicts final points better than raw squad value, in 14 leagues over 20 seasons, and
+predicts final points better than raw squad value, in 14 leagues over 21 seasons, and
 the margin survives every cross-validation test thrown at it. It is a small margin
-(about 0.014 points per game) but a consistent one.</p>
+(about 0.016 points per game) but a consistent one.</p>
 <h3 id="step-2-what-should-this-team-have-scored">Step 2 — What should this team have scored?</h3>
-<p>A single model, fitted across all 14 leagues and 20 seasons, turns squad value into
+<p>A single model, fitted across all 14 leagues and 21 seasons, turns squad value into
 expected points per game. Two details matter:</p>
 <ul>
 <li><strong>Values are compared within a league-season, not across them.</strong> Being worth €200m
@@ -125,9 +126,29 @@ standard. A C is an average professional manager, not a bad one.</li>
 <li><strong>A coach must earn a grade.</strong> The bar is roughly <strong>109 career games</strong> in that ranking
 (or a result strong enough to be statistically significant on its own). Below it, a
 coach still appears on the site with his stints and residuals, but with no grade —
-the data cannot tell his record apart from luck. Of 2,341 coaches in the dataset,
-<strong>545</strong> clear the bar in the all-leagues ranking and <strong>215</strong> in the top-5 ranking.</li>
+the data cannot tell his record apart from luck. Of 2,445 coaches in the dataset,
+<strong>566</strong> clear the bar in the all-leagues ranking and <strong>224</strong> in the top-5 ranking.</li>
 </ul>
+<h3 id="what-the-model-has-seen">What the model has seen</h3>
+<p>Everything on the site — league tables, team pages, coach grades — is fitted on the
+full span, <strong>2005/06 through 2025/26</strong>. When a new season is scraped it is added to the
+fit, and every grade is recomputed from scratch over the whole history.</p>
+<p>That raises an obvious question, and it is worth answering plainly: if the model has
+been fitted to every season it displays, how can any of it be a <em>test</em>? A model can
+always explain a season it was fitted to.</p>
+<p>The answer is that the tests on the &quot;Does it work?&quot; page were run <strong>before</strong> the fit
+moved. Test 3 in particular took the grades as they stood at the end of 2024/25, froze
+them, and used them to predict 2025/26 while that season was still unplayed from the
+model's point of view. The result of that test is a fact about a specific run and does
+not change when the model is later updated. Once the season had been scored, it was
+folded into the fit like any other.</p>
+<p>So the grade you see on a coach page today is <strong>not the same number</strong> test 3 validated
+— it is a later version of it, one that has since absorbed 2025/26. The validation page
+says so on the card. What carries over is the finding: grades built this way predicted a
+season they had never seen, which is evidence about the method, not about any one
+number.</p>
+<p>Each new season repeats the cycle: scrape it, score it against the frozen grades, record
+the result, then refit.</p>
 <h3 id="the-two-cuts">The two cuts</h3>
 <p>Every grade on the site carries a label: <strong>&quot;Top-5 leagues&quot;</strong> or <strong>&quot;All leagues.&quot;</strong></p>
 <ul>
@@ -198,7 +219,7 @@ grade and often no top-5 grade at all.</p>
 <p>The front page is the ranking. Toggle between the two cuts; the table gives each coach's
 grade, score, BLUP, career stints, clubs, games, and mean residual. &quot;sig&quot; marks the rare
 coaches whose record is individually significant. The stat tiles above it are the size
-of the dataset: 14 leagues, 20 seasons, 5,087 team-seasons, 2,341 coaches.</p>
+of the dataset: 14 leagues, 21 seasons, 5,339 team-seasons, 2,445 coaches.</p>
 <p>The league tiles at the bottom, the dropdown in the header, and the search box (coaches,
 teams, leagues) are the ways into everything else.</p>
 <h3 id="coach-page">Coach page</h3>
@@ -274,9 +295,10 @@ overperformance.</p>
 <p>A different question, and the only page not about coaches.</p>
 <p>The model expects a player's market value to move along a trajectory set by his age,
 his current price, his position and his recent momentum. The <strong>chart at the top is that
-expectation</strong> — one curve per position group, running from roughly +60–79% a year at 16
-down to −35% at 34, crossing zero around 26–27 for outfielders. Goalkeepers are the
-outlier the curve makes visible: nearly flat until the mid-twenties, crossing zero at 27.</p>
+expectation</strong> — one curve per position group, running from roughly +65–81% a year at 16
+down to about −36% at 34, crossing zero at 26 for outfielders. Goalkeepers are the
+outlier the curve makes visible: only +11% at 16 and nearly flat until the mid-twenties,
+crossing zero at 27.</p>
 <p>The <strong>leaderboard</strong> ranks the players who beat their own curve by the widest margin —
 genuine breakouts rather than expensive teenagers getting more expensive. Filter by
 position, league or era.</p>
@@ -309,13 +331,13 @@ deliberately different designs, each vulnerable to something the other two are n
 <td><strong>Test 1</strong></td>
 <td>Out-of-sample forecast</td>
 <td>Does a coach's grade improve the forecast of a <em>new</em> appointment?</td>
-<td>Forecast error falls; p = 0.016</td>
+<td>Forecast error falls; p = 0.0027</td>
 </tr>
 <tr>
 <td><strong>Test 2</strong></td>
 <td>Natural experiment</td>
 <td>When one club swaps managers, does the incoming grade predict what changes?</td>
-<td>≈ +0.7 pts/season per SD of grade; p = 0.004</td>
+<td>≈ +0.7 pts/season per SD of grade; p = 0.0015</td>
 </tr>
 <tr>
 <td><strong>Test 3</strong></td>
@@ -325,10 +347,13 @@ deliberately different designs, each vulnerable to something the other two are n
 </tr>
 </tbody>
 </table>
+<p>Test 3's grades were frozen at the end of 2024/25, before 2025/26 was played. That
+season is now part of the fit (<a href="#what-the-model-has-seen">what the model has seen</a>), so
+the grades on coach pages today are a later vintage than the ones the test scored.</p>
 <p>Tests 1 and 2 are the pair readers conflate — both are about hiring. The difference:
 test 1 pools appointments across hundreds of clubs, while test 2 holds a single club
 fixed across a single swap.</p>
-<p>The page then goes inside two of them. For test 3, two charts: every club in the holdout
+<p>The page then goes inside two of them. For test 3, two charts: every club in the tested
 season plotted against what the frozen model expected (the cloud around the diagonal is
 the residual, made visible), and each coach's prior grade against what his team actually
 went on to do. That second chart is deliberately unflattering — the correlation is only

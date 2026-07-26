@@ -166,7 +166,7 @@ cv_augmented_by_season <- function(dataset, min_games = 10, min_stints = 3) {
 
 # Runs the full augmented model pipeline.
 # Returns results invisibly; individual outputs accessible via the returned list.
-run_augmented_model <- function(seasons = 2015:2024, min_games = 10, min_stints = 3) {
+run_augmented_model <- function(seasons = 2015:xx_last_data_season, min_games = 10, min_stints = 3) {
   sep <- function(t) cat("\n", strrep("=", 60), "\n", t, "\n", strrep("=", 60), "\n\n", sep = "")
 
   sep("STEP 1: BUILD DATASET")

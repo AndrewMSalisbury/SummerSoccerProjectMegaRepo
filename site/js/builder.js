@@ -1,7 +1,7 @@
 // builder.js — the team-builder page (Docs/Team_Builder_Design.md).
 //
 // Build an XI on a drawn pitch: pick any of the 22 observed formations, click
-// a slot to choose a player-season from the big-5 pool (2015/16–2024/25),
+// a slot to choose a player-season from the big-5 pool,
 // then get the same descriptive coach-similarity grid the team pages show —
 // computed here in the browser against the user's XI (cosine similarity on
 // archetype shares, 85/15 similarity/quality blend, identical to
@@ -43,6 +43,16 @@ const state = {
   benchReason: null,      // label above the bench strip
   loaded: null,           // "Club · 2024/25" when started from a real squad
 };
+
+// "2015/16–2025/26" from whatever seasons the loaded player pool covers, so
+// the copy cannot drift when a season is added to the SofaScore caches.
+function poolSpan() {
+  const ys = state.players.flatMap(p => (p.seasons ?? []).map(s => s.y))
+    .filter(y => y != null);
+  if (!ys.length) return "";
+  const f = y => `${y}/${String((y + 1) % 100).padStart(2, "0")}`;
+  return `${f(Math.min(...ys))}–${f(Math.max(...ys))}`;
+}
 
 main().catch(e => showError(`Failed to load the team builder: ${e.message}`));
 
@@ -344,7 +354,7 @@ function openSquadPicker() {
       el("div", { class: "modal-search" }, input),
       el("p", { class: "footnote", style: "margin:0 0 6px" },
         `${all.length} club-seasons across the big five leagues, ` +
-        "2015/16–2024/25. The XI is that squad's most valuable players who fit " +
+        `${poolSpan()}. The XI is that squad's most valuable players who fit ` +
         "your current shape; everyone else goes to the bench."),
       listHost));
   document.body.append(modalNode);

@@ -81,7 +81,7 @@ analyze_midseason_replacements <- function(residuals_tbl      = NULL,
                                            min_incoming_games   = 10,
                                            min_outgoing_games   = 5) {
   if (is.null(residuals_tbl)) {
-    dataset       <- build_model_dataset(2015:2024)
+    dataset       <- build_model_dataset(2015:xx_last_data_season)
     residuals_tbl <- compute_residuals(dataset)
   }
 
